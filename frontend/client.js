@@ -1,4 +1,4 @@
-const username = localStorage.getItem('username');
+const username = localStorage.getItem('username'); 
 if (!username) window.location = 'index.html';
 
 const messagesEl = document.getElementById('messages');
@@ -17,14 +17,53 @@ const joinRoomBtn = document.getElementById('joinRoomBtn');
 
 let currentRoom = localStorage.getItem('room') || null;
 
-// ✅ Ask notification permission
-if (Notification.permission !== "granted") {
-  Notification.requestPermission();
-}
-
 // ✅ WebSocket & message queue
 let ws;
 let messageQueue = [];
+
+// ✅ Register Service Worker & subscribe for push notifications
+if ('serviceWorker' in navigator && 'PushManager' in window) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => {
+      console.log('Service Worker registered', reg);
+
+      // Request notification permission and subscribe
+      if (Notification.permission !== 'granted') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') subscribeUser();
+        });
+      } else {
+        subscribeUser();
+      }
+    })
+    .catch(err => console.error('Service Worker failed', err));
+}
+
+// ✅ Subscribe user function
+async function subscribeUser() {
+  const reg = await navigator.serviceWorker.ready;
+  const subscription = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array('BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA')
+  });
+
+  // Send subscription to backend
+  await fetch('/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, subscription })
+  });
+
+  console.log('Subscribed for push notifications');
+}
+
+// Helper to convert VAPID key
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+}
 
 // ✅ Safe send wrapper (queues if not open)
 function sendWS(data) {
@@ -49,10 +88,8 @@ function connectWS() {
       ws.send(JSON.stringify(queued));
     }
 
-    // Always send init
     sendWS({ type: 'init', username });
 
-    // Auto rejoin last room if exists
     if (currentRoom) {
       sendWS({ type: 'join', username, room: currentRoom });
     }
@@ -72,9 +109,10 @@ function connectWS() {
     } else {
       renderMessage(data);
 
-      // 🔔 Notify only for chat messages from others
+      // 🔔 Show notification for messages from others
       if (data.type === "chat" && data.username !== username) {
         showNotification(data);
+        sendPushNotification(data);
       }
     }
   });
@@ -91,25 +129,38 @@ function connectWS() {
 
 connectWS();
 
-// ✅ Show browser notification
+// ✅ Browser notification
 function showNotification(data) {
   if (Notification.permission === "granted") {
     const formattedTime = formatMessageTime(data.timestamp || data.time);
 
     new Notification(`💬 New message from ${data.username}`, {
       body: `${data.message}\n(${formattedTime})`,
-      icon: "chat-icon.png" // optional: add an icon file
+      icon: "/chat-icon.png"
     });
   }
 }
 
-// Show join/create form when icon clicked
+// ✅ Send push notification via Service Worker
+function sendPushNotification(data) {
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      title: `💬 ${data.username} sent a message`,
+      body: data.message,
+      icon: "/chat-icon.png"
+    });
+  }
+}
+
+// --- Remaining code: Join/create, group click, back button, renderGroups, formatMessageTime, renderMessage, sendMessage ---
+
+// Show join/create form
 addRoomIcon.addEventListener('click', () => {
   joinForm.classList.toggle("show");
   groupsEl.classList.toggle("down");
 });
 
-// ✅ Group click
+// Group click
 groupsEl.addEventListener("click", (e) => {
   if (e.target.tagName === "LI") {
     const selectedRoom = e.target.dataset.room;
@@ -125,7 +176,7 @@ groupsEl.addEventListener("click", (e) => {
   }
 });
 
-// ✅ Back button (mobile)
+// Back button
 backBtn.addEventListener("click", () => {
   if (window.innerWidth <= 530) {
     chatContainer.classList.remove("active");
@@ -133,7 +184,7 @@ backBtn.addEventListener("click", () => {
   }
 });
 
-// ✅ Join or create room
+// Join or create room
 function joinChat() {
   const roomName = newRoomInput.value.trim();
   if (!roomName) return;
@@ -150,125 +201,3 @@ function joinChat() {
   newRoomInput.value = '';
 }
 joinRoomBtn.addEventListener('click', joinChat);
-
-// ✅ Render groups
-function renderGroups(groups) {
-  groupsEl.innerHTML = '';
-
-  groups.forEach(group => {
-    const li = document.createElement('li');
-    li.dataset.room = group;
-    li.textContent = group;
-
-    const delBtn = document.createElement('button');
-    delBtn.textContent = 'Delete';
-    delBtn.className = 'delete-group-btn';
-    delBtn.style.display = 'none';
-    li.appendChild(delBtn);
-
-    li.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      delBtn.style.display = 'inline-block';
-      delBtn.classList.add('show');
-    });
-
-    let pressTimer;
-    li.addEventListener('touchstart', () => {
-      pressTimer = setTimeout(() => {
-        delBtn.style.display = 'inline-block';
-        delBtn.classList.add('show');
-      }, 600);
-    });
-    li.addEventListener('touchend', () => clearTimeout(pressTimer));
-
-    document.addEventListener('click', e => {
-      if (!li.contains(e.target)) {
-        delBtn.classList.remove('show');
-        delBtn.style.display = 'none';
-      }
-    });
-
-    delBtn.addEventListener('click', () => {
-      sendWS({ type: 'deleteGroup', room: group });
-    });
-
-    groupsEl.appendChild(li);
-  });
-}
-
-// ✅ Format message time
-function formatMessageTime(ts) {
-  const date = new Date(ts);
-  const now = new Date();
-
-  const isToday = date.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const isYesterday = date.toDateString() === yesterday.toDateString();
-
-  if (isToday) return `Today ${date.toLocaleTimeString()}`;
-  else if (isYesterday) return `Yesterday ${date.toLocaleTimeString()}`;
-  else return date.toLocaleString();
-}
-
-// ✅ Render messages
-function renderMessage(data) {
-  const div = document.createElement('div');
-
-  if (data.type === 'system') {
-    div.className = 'system';
-    div.textContent = data.message;
-  } else if (data.type === 'chat') {
-    div.className = 'message';
-    div.id = data.id;
-
-    const formattedTime = formatMessageTime(data.timestamp || data.time);
-    div.innerHTML = `<div style="display:flex; flex-direction:column; gap:10px">
-                        ${data.username} [${formattedTime}]
-                        <div class="message"><b>${data.message}</b></div>
-                     </div>`;
-
-    if (data.username === username) {
-      const message = div.querySelector(".message");
-      const btn = document.createElement('button');
-      btn.className = 'delete-btn';
-      btn.textContent = 'Delete';
-      message.appendChild(btn);
-
-      div.addEventListener('contextmenu', e => {
-        e.preventDefault();
-        btn.classList.add('show');
-      });
-
-      document.addEventListener('click', e => {
-        if (!div.contains(e.target)) btn.classList.remove('show');
-      });
-
-      let pressTimer;
-      div.addEventListener('touchstart', () => {
-        pressTimer = setTimeout(() => btn.classList.add('show'), 600);
-      });
-      div.addEventListener('touchend', () => clearTimeout(pressTimer));
-
-      btn.addEventListener('click', () => {
-        sendWS({ type: 'delete', id: data.id });
-      });
-    }
-  }
-
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-// ✅ Send message
-sendBtn.addEventListener('click', sendMessage);
-inputEl.addEventListener('keypress', e => {
-  if (e.key === 'Enter') sendMessage();
-});
-
-function sendMessage() {
-  const msg = inputEl.value.trim();
-  if (!msg || !currentRoom) return;
-  sendWS({ type: 'message', message: msg, room: currentRoom });
-  inputEl.value = '';
-}

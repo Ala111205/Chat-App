@@ -4,6 +4,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const mongoose = require('mongoose');
+const webpush = require('web-push');
 const Message = require('./models/message');
 const Room = require('./models/room');
 
@@ -16,10 +17,31 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected...'))
   .catch(err => console.error(err));
 
+// Configure web-push
+webpush.setVapidDetails(
+  'mailto:youremail@example.com',         // change to your email
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
+
 // Track active clients per room
 let activeRooms = {}; // { roomName: { clients: [] } }
+// Track user subscriptions for push
+let userSubscriptions = {}; // { username: [subscriptionObj] }
 
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Save push subscription from client
+app.post('/subscribe', (req, res) => {
+  const { username, subscription } = req.body;
+  if (!username || !subscription) return res.status(400).send('Invalid');
+
+  if (!userSubscriptions[username]) userSubscriptions[username] = [];
+  userSubscriptions[username].push(subscription);
+
+  res.status(201).json({ message: 'Subscribed successfully' });
+});
 
 wss.on('connection', ws => {
   ws.on('message', async msg => {
@@ -37,20 +59,15 @@ wss.on('connection', ws => {
       if (!roomName) return;
 
       try {
-        // Use findOneAndUpdate with upsert to avoid duplicates
         const room = await Room.findOneAndUpdate(
-          { name: roomName },               // query
-          { $addToSet: { members: ws.username } }, // add user only if not present
-          { upsert: true, new: true }       // create if not exists, return new document
+          { name: roomName },
+          { $addToSet: { members: ws.username } },
+          { upsert: true, new: true }
         );
 
-        // Track active clients in memory
         if (!activeRooms[roomName]) activeRooms[roomName] = { clients: [] };
-        if (!activeRooms[roomName].clients.includes(ws)) {
-          activeRooms[roomName].clients.push(ws);
-        }
+        if (!activeRooms[roomName].clients.includes(ws)) activeRooms[roomName].clients.push(ws);
 
-        // Send updated groups to this user
         await sendGroupList(ws);
       } catch (err) {
         console.error('Error creating room:', err.message);
@@ -69,13 +86,9 @@ wss.on('connection', ws => {
           { upsert: true, new: true }
         );
 
-        // Track active clients
         if (!activeRooms[roomName]) activeRooms[roomName] = { clients: [] };
-        if (!activeRooms[roomName].clients.includes(ws)) {
-          activeRooms[roomName].clients.push(ws);
-        }
+        if (!activeRooms[roomName].clients.includes(ws)) activeRooms[roomName].clients.push(ws);
 
-        // Send chat history
         const history = await Message.find({ room: roomName }).sort({ createdAt: 1 });
         ws.send(JSON.stringify({
           type: 'history',
@@ -84,18 +97,16 @@ wss.on('connection', ws => {
             type: 'chat',
             username: msg.username,
             message: msg.message,
-            timestamp: msg.createdAt.getTime() // send numeric timestamp
+            timestamp: msg.createdAt.getTime()
           }))
         }));
 
-        // Notify room
         broadcast(roomName, { type: 'system', message: `${ws.username} joined the chat` });
         await sendGroupList(ws);
       } catch (err) {
         console.error('Error joining room:', err.message);
       }
     }
-
 
     // 4️⃣ Chat Message
     if (data.type === 'message') {
@@ -108,13 +119,31 @@ wss.on('connection', ws => {
         time: new Date()
       });
 
-      broadcast(ws.room, {
+      const msgData = {
         type: 'chat',
         id: newMsg._id.toString(),
         username: ws.username,
         message: data.message,
         time: newMsg.createdAt.getTime()
-      });
+      };
+
+      broadcast(ws.room, msgData);
+
+      // 🔔 Send push notifications to all other users in room
+      const room = await Room.findOne({ name: ws.room });
+      if (room) {
+        room.members.forEach(user => {
+          if (user !== ws.username && userSubscriptions[user]) {
+            userSubscriptions[user].forEach(sub => {
+              webpush.sendNotification(sub, JSON.stringify({
+                title: `New message from ${ws.username}`,
+                body: data.message,
+                icon: '/icon.png'
+              })).catch(err => console.error('Push error:', err));
+            });
+          }
+        });
+      }
     }
 
     // 5️⃣ Delete message
@@ -130,7 +159,6 @@ wss.on('connection', ws => {
       const room = await Room.findOne({ name: roomName });
       if (!room) return;
 
-      // Notify connected clients
       if (activeRooms[roomName]) {
         activeRooms[roomName].clients.forEach(client => {
           if (client.readyState === WebSocket.OPEN) {
@@ -141,18 +169,15 @@ wss.on('connection', ws => {
         delete activeRooms[roomName];
       }
 
-      // Delete room and all messages in DB
       await Room.deleteOne({ name: roomName });
       await Message.deleteMany({ room: roomName });
 
-      // Notify all connected clients about updated groups
       wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN && client.username) sendGroupList(client);
       });
     }
   });
 
-  // Handle disconnect
   ws.on('close', () => {
     if (!ws.room || !activeRooms[ws.room]) return;
     activeRooms[ws.room].clients = activeRooms[ws.room].clients.filter(c => c !== ws);
@@ -174,5 +199,5 @@ async function sendGroupList(ws) {
   ws.send(JSON.stringify({ type: 'joinedGroups', groups: userRooms.map(r => r.name) }));
 }
 
-const PORT = process.env.PORT || 5000
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on ${PORT}`));
