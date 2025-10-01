@@ -17,53 +17,69 @@ const joinRoomBtn = document.getElementById('joinRoomBtn');
 
 let currentRoom = localStorage.getItem('room') || null;
 
-// ✅ Create WebSocket connection
-let ws = new WebSocket('wss://chat-app-kyp7.onrender.com');
+// ✅ WebSocket & message queue
+let ws;
+let messageQueue = [];
 
-// ✅ Safe send wrapper
+// ✅ Safe send wrapper (queues if not open)
 function sendWS(data) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data));
   } else {
-    console.warn("⚠️ WebSocket not open. Skipped:", data);
+    console.warn("⚠️ WebSocket not open. Queued:", data);
+    messageQueue.push(data);
   }
 }
 
-ws.addEventListener('open', () => {
-  sendWS({ type: 'init', username });
+// ✅ Initialize WS connection
+function connectWS() {
+  ws = new WebSocket('wss://chat-app-kyp7.onrender.com');
 
-  if (currentRoom) {
-    sendWS({ type: 'join', username, room: currentRoom });
-  }
-});
+  ws.addEventListener('open', () => {
+    console.log("✅ WebSocket connected");
 
-ws.addEventListener('message', event => {
-  const data = JSON.parse(event.data);
+    // Flush queued messages
+    while (messageQueue.length > 0) {
+      const queued = messageQueue.shift();
+      ws.send(JSON.stringify(queued));
+    }
 
-  if (data.type === 'joinedGroups') {
-    renderGroups(data.groups);
-  } else if (data.type === 'history') {
-    messagesEl.innerHTML = '';
-    data.messages.forEach(msg => renderMessage(msg));
-  } else if (data.type === 'delete') {
-    const msgEl = document.getElementById(data.id);
-    if (msgEl) msgEl.remove();
-  } else {
-    renderMessage(data);
-  }
-});
+    // Always send init
+    sendWS({ type: 'init', username });
 
-// ✅ Reconnect on close
-ws.addEventListener('close', () => {
-  console.warn("🔌 WebSocket closed. Reconnecting in 2s...");
-  setTimeout(() => {
-    window.location.reload();
-  }, 2000);
-});
+    // Auto rejoin last room if exists
+    if (currentRoom) {
+      sendWS({ type: 'join', username, room: currentRoom });
+    }
+  });
 
-ws.addEventListener('error', err => {
-  console.error("⚠️ WebSocket error:", err);
-});
+  ws.addEventListener('message', event => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === 'joinedGroups') {
+      renderGroups(data.groups);
+    } else if (data.type === 'history') {
+      messagesEl.innerHTML = '';
+      data.messages.forEach(msg => renderMessage(msg));
+    } else if (data.type === 'delete') {
+      const msgEl = document.getElementById(data.id);
+      if (msgEl) msgEl.remove();
+    } else {
+      renderMessage(data);
+    }
+  });
+
+  ws.addEventListener('close', () => {
+    console.warn("🔌 WebSocket closed. Reconnecting in 2s...");
+    setTimeout(connectWS, 2000);
+  });
+
+  ws.addEventListener('error', err => {
+    console.error("⚠️ WebSocket error:", err);
+  });
+}
+
+connectWS();
 
 // Show join/create form when icon clicked
 addRoomIcon.addEventListener('click', () => {
@@ -71,11 +87,12 @@ addRoomIcon.addEventListener('click', () => {
   groupsEl.classList.toggle("down");
 });
 
-// ✅ Single event listener for group click
+// ✅ Group click
 groupsEl.addEventListener("click", (e) => {
   if (e.target.tagName === "LI") {
     const selectedRoom = e.target.dataset.room;
     currentRoom = selectedRoom;
+    localStorage.setItem('room', selectedRoom);
     messagesEl.innerHTML = '';
     sendWS({ type: 'join', username, room: selectedRoom });
 
@@ -86,7 +103,7 @@ groupsEl.addEventListener("click", (e) => {
   }
 });
 
-// ✅ Back button for mobile
+// ✅ Back button (mobile)
 backBtn.addEventListener("click", () => {
   if (window.innerWidth <= 530) {
     chatContainer.classList.remove("active");
@@ -94,7 +111,7 @@ backBtn.addEventListener("click", () => {
   }
 });
 
-// Join or create room
+// ✅ Join or create room
 function joinChat() {
   const roomName = newRoomInput.value.trim();
   if (!roomName) return;
@@ -102,6 +119,7 @@ function joinChat() {
   sendWS({ type: 'createRoom', room: roomName });
 
   currentRoom = roomName;
+  localStorage.setItem('room', roomName);
   messagesEl.innerHTML = '';
   sendWS({ type: 'join', username, room: currentRoom });
 
@@ -111,7 +129,7 @@ function joinChat() {
 }
 joinRoomBtn.addEventListener('click', joinChat);
 
-// Render groups
+// ✅ Render groups
 function renderGroups(groups) {
   groupsEl.innerHTML = '';
 
@@ -156,7 +174,7 @@ function renderGroups(groups) {
   });
 }
 
-// Format time
+// ✅ Format message time
 function formatMessageTime(ts) {
   const date = new Date(ts);
   const now = new Date();
@@ -171,7 +189,7 @@ function formatMessageTime(ts) {
   else return date.toLocaleString();
 }
 
-// Render messages
+// ✅ Render messages
 function renderMessage(data) {
   const div = document.createElement('div');
 
@@ -220,7 +238,7 @@ function renderMessage(data) {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-// Send message
+// ✅ Send message
 sendBtn.addEventListener('click', sendMessage);
 inputEl.addEventListener('keypress', e => {
   if (e.key === 'Enter') sendMessage();
