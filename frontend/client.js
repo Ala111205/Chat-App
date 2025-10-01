@@ -21,25 +21,25 @@ let currentRoom = localStorage.getItem('room') || null;
 let ws;
 let messageQueue = [];
 
+// ✅ Ask notification permission
+if (Notification.permission !== "granted") {
+  Notification.requestPermission();
+}
+
 // ✅ Register Service Worker & subscribe for push notifications
 if ('serviceWorker' in navigator && 'PushManager' in window) {
   navigator.serviceWorker.register('/sw.js')
     .then(reg => {
       console.log('Service Worker registered', reg);
 
-      // Request notification permission and subscribe
-      if (Notification.permission !== 'granted') {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') subscribeUser();
-        });
-      } else {
+      if (Notification.permission === 'granted') {
         subscribeUser();
       }
     })
     .catch(err => console.error('Service Worker failed', err));
 }
 
-// ✅ Subscribe user function
+// ✅ Subscribe user function for push
 async function subscribeUser() {
   const reg = await navigator.serviceWorker.ready;
   const subscription = await reg.pushManager.subscribe({
@@ -47,7 +47,6 @@ async function subscribeUser() {
     applicationServerKey: urlBase64ToUint8Array('BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA')
   });
 
-  // Send subscription to backend
   await fetch('/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -82,10 +81,8 @@ function connectWS() {
   ws.addEventListener('open', () => {
     console.log("✅ WebSocket connected");
 
-    // Flush queued messages
     while (messageQueue.length > 0) {
-      const queued = messageQueue.shift();
-      ws.send(JSON.stringify(queued));
+      ws.send(JSON.stringify(messageQueue.shift()));
     }
 
     sendWS({ type: 'init', username });
@@ -98,9 +95,8 @@ function connectWS() {
   ws.addEventListener('message', event => {
     const data = JSON.parse(event.data);
 
-    if (data.type === 'joinedGroups') {
-      renderGroups(data.groups);
-    } else if (data.type === 'history') {
+    if (data.type === 'joinedGroups') renderGroups(data.groups);
+    else if (data.type === 'history') {
       messagesEl.innerHTML = '';
       data.messages.forEach(msg => renderMessage(msg));
     } else if (data.type === 'delete') {
@@ -109,7 +105,6 @@ function connectWS() {
     } else {
       renderMessage(data);
 
-      // 🔔 Show notification for messages from others
       if (data.type === "chat" && data.username !== username) {
         showNotification(data);
         sendPushNotification(data);
@@ -122,9 +117,7 @@ function connectWS() {
     setTimeout(connectWS, 2000);
   });
 
-  ws.addEventListener('error', err => {
-    console.error("⚠️ WebSocket error:", err);
-  });
+  ws.addEventListener('error', err => console.error("⚠️ WebSocket error:", err));
 }
 
 connectWS();
@@ -136,7 +129,7 @@ function showNotification(data) {
 
     new Notification(`💬 New message from ${data.username}`, {
       body: `${data.message}\n(${formattedTime})`,
-      icon: "/chat-icon.png"
+      icon: "chat-icon.png"
     });
   }
 }
@@ -147,27 +140,24 @@ function sendPushNotification(data) {
     navigator.serviceWorker.controller.postMessage({
       title: `💬 ${data.username} sent a message`,
       body: data.message,
-      icon: "/chat-icon.png"
+      icon: "chat-icon.png"
     });
   }
 }
 
-// --- Remaining code: Join/create, group click, back button, renderGroups, formatMessageTime, renderMessage, sendMessage ---
-
-// Show join/create form
+// ✅ Show join/create form
 addRoomIcon.addEventListener('click', () => {
   joinForm.classList.toggle("show");
   groupsEl.classList.toggle("down");
 });
 
-// Group click
+// ✅ Group click
 groupsEl.addEventListener("click", (e) => {
   if (e.target.tagName === "LI") {
-    const selectedRoom = e.target.dataset.room;
-    currentRoom = selectedRoom;
-    localStorage.setItem('room', selectedRoom);
+    currentRoom = e.target.dataset.room;
+    localStorage.setItem('room', currentRoom);
     messagesEl.innerHTML = '';
-    sendWS({ type: 'join', username, room: selectedRoom });
+    sendWS({ type: 'join', username, room: currentRoom });
 
     if (window.innerWidth <= 530) {
       groupList.classList.remove("active");
@@ -176,7 +166,7 @@ groupsEl.addEventListener("click", (e) => {
   }
 });
 
-// Back button
+// ✅ Back button
 backBtn.addEventListener("click", () => {
   if (window.innerWidth <= 530) {
     chatContainer.classList.remove("active");
@@ -184,7 +174,7 @@ backBtn.addEventListener("click", () => {
   }
 });
 
-// Join or create room
+// ✅ Join or create room
 function joinChat() {
   const roomName = newRoomInput.value.trim();
   if (!roomName) return;
@@ -192,7 +182,7 @@ function joinChat() {
   sendWS({ type: 'createRoom', room: roomName });
 
   currentRoom = roomName;
-  localStorage.setItem('room', roomName);
+  localStorage.setItem('room', currentRoom);
   messagesEl.innerHTML = '';
   sendWS({ type: 'join', username, room: currentRoom });
 
@@ -201,3 +191,56 @@ function joinChat() {
   newRoomInput.value = '';
 }
 joinRoomBtn.addEventListener('click', joinChat);
+
+// ✅ Render groups
+function renderGroups(groups) {
+  groupsEl.innerHTML = '';
+  groups.forEach(group => {
+    const li = document.createElement('li');
+    li.dataset.room = group;
+    li.textContent = group;
+    groupsEl.appendChild(li);
+  });
+}
+
+// ✅ Format message time
+function formatMessageTime(ts) {
+  const date = new Date(ts);
+  const now = new Date();
+
+  if (date.toDateString() === now.toDateString()) return `Today ${date.toLocaleTimeString()}`;
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${date.toLocaleTimeString()}`;
+
+  return date.toLocaleString();
+}
+
+// ✅ Render messages
+function renderMessage(data) {
+  const div = document.createElement('div');
+
+  if (data.type === 'system') {
+    div.className = 'system';
+    div.textContent = data.message;
+  } else if (data.type === 'chat') {
+    div.className = 'message';
+    div.id = data.id;
+    const formattedTime = formatMessageTime(data.timestamp || data.time);
+    div.innerHTML = `<b>${data.username} [${formattedTime}]:</b> ${data.message}`;
+  }
+
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// ✅ Send message
+sendBtn.addEventListener('click', sendMessage);
+inputEl.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
+
+function sendMessage() {
+  const msg = inputEl.value.trim();
+  if (!msg || !currentRoom) return;
+  sendWS({ type: 'message', message: msg, room: currentRoom });
+  inputEl.value = '';
+}
