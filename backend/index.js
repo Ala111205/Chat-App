@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -173,5 +174,5 @@ async function sendGroupList(ws) {
   ws.send(JSON.stringify({ type: 'joinedGroups', groups: userRooms.map(r => r.name) }));
 }
 
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 5000
 server.listen(PORT, () => console.log(`Server running on ${PORT}`));
