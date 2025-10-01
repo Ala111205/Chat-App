@@ -19,7 +19,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 // Configure web-push
 webpush.setVapidDetails(
-  'mailto:youremail@example.com',         // change to your email
+  'mailto:sadham070403@example.com',
   process.env.VAPID_PUBLIC_KEY,
   process.env.VAPID_PRIVATE_KEY
 );
