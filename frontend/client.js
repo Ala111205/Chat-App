@@ -18,7 +18,7 @@ const joinRoomBtn = document.getElementById('joinRoomBtn');
 let currentRoom = localStorage.getItem('room') || null;
 
 // Open a single WebSocket connection
-const ws = new WebSocket(process.env.VITE_WS_URL);
+const ws = new WebSocket('wss://chat-app-kyp7.onrender.com');
 
 ws.addEventListener('open', () => {
   ws.send(JSON.stringify({ type: 'init', username }));
