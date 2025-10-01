@@ -17,14 +17,23 @@ const joinRoomBtn = document.getElementById('joinRoomBtn');
 
 let currentRoom = localStorage.getItem('room') || null;
 
-// Open a single WebSocket connection
-const ws = new WebSocket('wss://chat-app-kyp7.onrender.com');
+// ✅ Create WebSocket connection
+let ws = new WebSocket('wss://chat-app-kyp7.onrender.com');
+
+// ✅ Safe send wrapper
+function sendWS(data) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(data));
+  } else {
+    console.warn("⚠️ WebSocket not open. Skipped:", data);
+  }
+}
 
 ws.addEventListener('open', () => {
-  ws.send(JSON.stringify({ type: 'init', username }));
+  sendWS({ type: 'init', username });
 
   if (currentRoom) {
-    ws.send(JSON.stringify({ type: 'join', username, room: currentRoom }));
+    sendWS({ type: 'join', username, room: currentRoom });
   }
 });
 
@@ -44,6 +53,18 @@ ws.addEventListener('message', event => {
   }
 });
 
+// ✅ Reconnect on close
+ws.addEventListener('close', () => {
+  console.warn("🔌 WebSocket closed. Reconnecting in 2s...");
+  setTimeout(() => {
+    window.location.reload();
+  }, 2000);
+});
+
+ws.addEventListener('error', err => {
+  console.error("⚠️ WebSocket error:", err);
+});
+
 // Show join/create form when icon clicked
 addRoomIcon.addEventListener('click', () => {
   joinForm.classList.toggle("show");
@@ -56,9 +77,8 @@ groupsEl.addEventListener("click", (e) => {
     const selectedRoom = e.target.dataset.room;
     currentRoom = selectedRoom;
     messagesEl.innerHTML = '';
-    ws.send(JSON.stringify({ type: 'join', username, room: selectedRoom }));
+    sendWS({ type: 'join', username, room: selectedRoom });
 
-    // Switch layout in mobile view
     if (window.innerWidth <= 530) {
       groupList.classList.remove("active");
       chatContainer.classList.add("active");
@@ -74,25 +94,24 @@ backBtn.addEventListener("click", () => {
   }
 });
 
-// Reuse joinChat logic for chat.html
+// Join or create room
 function joinChat() {
   const roomName = newRoomInput.value.trim();
   if (!roomName) return;
 
-  ws.send(JSON.stringify({ type: 'createRoom', room: roomName }));
+  sendWS({ type: 'createRoom', room: roomName });
 
   currentRoom = roomName;
   messagesEl.innerHTML = '';
-  ws.send(JSON.stringify({ type: 'join', username, room: currentRoom }));
+  sendWS({ type: 'join', username, room: currentRoom });
 
   joinForm.classList.remove('show');
   groupsEl.classList.toggle("down");
   newRoomInput.value = '';
 }
-
 joinRoomBtn.addEventListener('click', joinChat);
 
-// Render the left group sidebar with delete button
+// Render groups
 function renderGroups(groups) {
   groupsEl.innerHTML = '';
 
@@ -101,21 +120,18 @@ function renderGroups(groups) {
     li.dataset.room = group;
     li.textContent = group;
 
-    // Group delete button
     const delBtn = document.createElement('button');
     delBtn.textContent = 'Delete';
     delBtn.className = 'delete-group-btn';
     delBtn.style.display = 'none';
     li.appendChild(delBtn);
 
-    // Right-click (desktop) to show delete
     li.addEventListener('contextmenu', e => {
       e.preventDefault();
       delBtn.style.display = 'inline-block';
       delBtn.classList.add('show');
     });
 
-    // Long press (mobile)
     let pressTimer;
     li.addEventListener('touchstart', () => {
       pressTimer = setTimeout(() => {
@@ -125,7 +141,6 @@ function renderGroups(groups) {
     });
     li.addEventListener('touchend', () => clearTimeout(pressTimer));
 
-    // Click outside to hide
     document.addEventListener('click', e => {
       if (!li.contains(e.target)) {
         delBtn.classList.remove('show');
@@ -133,16 +148,15 @@ function renderGroups(groups) {
       }
     });
 
-    // Delete group on click
     delBtn.addEventListener('click', () => {
-      ws.send(JSON.stringify({ type: 'deleteGroup', room: group }));
+      sendWS({ type: 'deleteGroup', room: group });
     });
 
     groupsEl.appendChild(li);
   });
 }
 
-// ✅ Format time for Today / Yesterday
+// Format time
 function formatMessageTime(ts) {
   const date = new Date(ts);
   const now = new Date();
@@ -152,16 +166,12 @@ function formatMessageTime(ts) {
   yesterday.setDate(now.getDate() - 1);
   const isYesterday = date.toDateString() === yesterday.toDateString();
 
-  if (isToday) {
-    return `Today ${date.toLocaleTimeString()}`;
-  } else if (isYesterday) {
-    return `Yesterday ${date.toLocaleTimeString()}`;
-  } else {
-    return date.toLocaleString(); // fallback full date
-  }
+  if (isToday) return `Today ${date.toLocaleTimeString()}`;
+  else if (isYesterday) return `Yesterday ${date.toLocaleTimeString()}`;
+  else return date.toLocaleString();
 }
 
-// Render messages with delete button for your own messages
+// Render messages
 function renderMessage(data) {
   const div = document.createElement('div');
 
@@ -173,13 +183,13 @@ function renderMessage(data) {
     div.id = data.id;
 
     const formattedTime = formatMessageTime(data.timestamp || data.time);
-    div.innerHTML = `<div style="display:flex; flex-direction:column; justify-content: center; gap:10px">
+    div.innerHTML = `<div style="display:flex; flex-direction:column; gap:10px">
                         ${data.username} [${formattedTime}]
                         <div class="message"><b>${data.message}</b></div>
-                    <div/>`;
+                     </div>`;
 
     if (data.username === username) {
-      const message = div.querySelector(".message")
+      const message = div.querySelector(".message");
       const btn = document.createElement('button');
       btn.className = 'delete-btn';
       btn.textContent = 'Delete';
@@ -201,7 +211,7 @@ function renderMessage(data) {
       div.addEventListener('touchend', () => clearTimeout(pressTimer));
 
       btn.addEventListener('click', () => {
-        ws.send(JSON.stringify({ type: 'delete', id: data.id }));
+        sendWS({ type: 'delete', id: data.id });
       });
     }
   }
@@ -219,6 +229,6 @@ inputEl.addEventListener('keypress', e => {
 function sendMessage() {
   const msg = inputEl.value.trim();
   if (!msg || !currentRoom) return;
-  ws.send(JSON.stringify({ type: 'message', message: msg, room: currentRoom }));
+  sendWS({ type: 'message', message: msg, room: currentRoom });
   inputEl.value = '';
 }
