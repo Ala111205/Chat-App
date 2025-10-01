@@ -17,6 +17,11 @@ const joinRoomBtn = document.getElementById('joinRoomBtn');
 
 let currentRoom = localStorage.getItem('room') || null;
 
+// ✅ Ask notification permission
+if (Notification.permission !== "granted") {
+  Notification.requestPermission();
+}
+
 // ✅ WebSocket & message queue
 let ws;
 let messageQueue = [];
@@ -66,6 +71,11 @@ function connectWS() {
       if (msgEl) msgEl.remove();
     } else {
       renderMessage(data);
+
+      // 🔔 Notify only for chat messages from others
+      if (data.type === "chat" && data.username !== username) {
+        showNotification(data);
+      }
     }
   });
 
@@ -80,6 +90,18 @@ function connectWS() {
 }
 
 connectWS();
+
+// ✅ Show browser notification
+function showNotification(data) {
+  if (Notification.permission === "granted") {
+    const formattedTime = formatMessageTime(data.timestamp || data.time);
+
+    new Notification(`💬 New message from ${data.username}`, {
+      body: `${data.message}\n(${formattedTime})`,
+      icon: "chat-icon.png" // optional: add an icon file
+    });
+  }
+}
 
 // Show join/create form when icon clicked
 addRoomIcon.addEventListener('click', () => {
