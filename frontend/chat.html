@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://kit.fontawesome.com/9885839914.js" crossorigin="anonymous"></script>
+  <title>Chat Room</title>
+  <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Left: Group list -->
+    <div class="group-list">
+      <div>
+        <h3>Groups</h3>
+        <i class="fa-solid fa-square-plus"></i>
+      </div>
+        
+      <div class="join-form" id="joinForm">
+          <input type="text" id="newRoom" placeholder="Enter room name" required>
+          <button id="joinRoomBtn">Create</button>
+      </div>
+      
+       <ul id="groups"></ul> <!-- dynamically filled from server -->
+    </div>
+
+    <!-- Right: Chat box -->
+    <div class="chat-container">
+      <button id="backBtn"><i class="fa-solid fa-arrow-left"></i></button>
+      <div class="messages" id="messages"></div>
+      <div class="message-input">
+        <input id="msgInput" placeholder="Type message...">
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="client.js"></script>
+</body>
+</html>
