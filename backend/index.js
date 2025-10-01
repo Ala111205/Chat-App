@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/chatapp')
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected...'))
   .catch(err => console.error(err));
 
@@ -173,4 +173,5 @@ async function sendGroupList(ws) {
   ws.send(JSON.stringify({ type: 'joinedGroups', groups: userRooms.map(r => r.name) }));
 }
 
-server.listen(3000, () => console.log('Server running on http://localhost:3000'));
+const PORT = process.env.PORT
+server.listen(PORT, () => console.log(`Server running on ${PORT}`));
