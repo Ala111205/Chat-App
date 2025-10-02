@@ -1,5 +1,8 @@
 // ✅ Socket.io setup
-const socket = io('https://chat-app-kyp7.onrender.com');
+const socket = io("https://chat-app-kyp7.onrender.com", {
+  transports: ["websocket"],
+  withCredentials: true
+});
 
 // ✅ Get DOM elements
 const username = localStorage.getItem('username');
@@ -81,6 +84,21 @@ socket.on('chat', data => renderMessage(data));
 
 // System messages
 socket.on('system', msg => renderMessage({ type: 'system', message: msg }));
+
+// ✅ Handle disconnects
+socket.on("disconnect", (reason) => {
+  console.warn("❌ Disconnected from backend! Reason:", reason);
+
+  // Optional: show a system message in the chat
+  renderMessage({ type: 'system', message: "⚠️ You got disconnected from the server." });
+
+  // Optional: try reconnecting (Socket.IO auto-reconnects by default)
+  // If you want a custom retry message:
+  setTimeout(() => {
+    console.log("🔄 Attempting to reconnect...");
+  }, 2000);
+});
+
 
 // ✅ Send message
 sendBtn.addEventListener('click', sendMessage);
