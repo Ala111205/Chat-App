@@ -11,6 +11,13 @@ const Room = require('./models/room');
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+const cors = require('cors');
+
+app.use(cors({
+  origin: 'https://chat-app-indol-gamma.vercel.app', // allow your frontend URL
+  methods: ['GET','POST'],
+  credentials: true
+}));
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
