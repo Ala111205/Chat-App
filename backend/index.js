@@ -24,6 +24,8 @@ const io = new Server(server, {
   }
 });
 
+app.options("*", cors());
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
@@ -52,7 +54,6 @@ app.post('/subscribe', (req, res) => {
   if (!userSubscriptions[username]) userSubscriptions[username] = [];
   userSubscriptions[username].push(subscription);
 
-  res.set("Access-Control-Allow-Origin", "https://chat-app-indol-gamma.vercel.app");
   res.status(201).json({ message: 'Subscribed successfully' });
 });
 
