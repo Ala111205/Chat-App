@@ -17,7 +17,6 @@ const allowedOrigins = [
   'https://chat-app-indol-gamma.vercel.app',
   'http://localhost:3000',
   'http://127.0.0.1:5500', // Live Server
-  'http://localhost:4500', 
 ];
 
 app.use(cors({
