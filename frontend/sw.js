@@ -45,11 +45,18 @@ self.addEventListener('activate', event => {
   self.clients.claim(); // Take control of all clients
 });
 
+const FALLBACK_ICON = '/icon.png'; // cached version in SW
+
 // Fetch event - respond with cache first, then network
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
-      .then(response => response || fetch(event.request))
+      .then(response => response || fetch(event.request).catch(() => {
+        // fallback for icon.png if offline
+        if (event.request.url.endsWith('icon.png')) {
+          return caches.match(FALLBACK_ICON);
+        }
+      }))
   );
 });
 
