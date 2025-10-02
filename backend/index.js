@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
 const path = require('path');
 const mongoose = require('mongoose');
 const webpush = require('web-push');
@@ -10,68 +9,43 @@ const Room = require('./models/room');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
-const cors = require('cors');
 
-const allowedOrigins = [
-  'https://chat-app-indol-gamma.vercel.app',
-  'http://localhost:3000',
-  'http://127.0.0.1:5500', // Live Server
-];
+// ✅ Socket.io setup
+const { Server } = require('socket.io');
+const io = new Server(server, {
+  cors: {
+    origin: [
+      'https://chat-app-indol-gamma.vercel.app',
+      'http://localhost:3000',
+      'http://127.0.0.1:5500'
+    ],
+    methods: ['GET','POST'],
+    credentials: true
+  }
+});
 
-app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, service worker)
-    if (!origin) return callback(null, true);
+// Middleware
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(path.join(__dirname, '../frontend/public')));
 
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type'],
-  credentials: true
-}));
-
-
-// Connect to MongoDB
+// MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected...'))
   .catch(err => console.error(err));
 
-// Configure web-push
+// Web Push
 webpush.setVapidDetails(
   'mailto:sadham070403@example.com',
   process.env.VAPID_PUBLIC_KEY,
   process.env.VAPID_PRIVATE_KEY
 );
 
-// Track active clients per room
-let activeRooms = {}; // { roomName: { clients: [] } }
-// Track user subscriptions for push
-let userSubscriptions = {}; // { username: [subscriptionObj] }
+// Push subscriptions storage
+let userSubscriptions = {};
 
-app.use(express.json());
-// Serve frontend static files (HTML, JS, CSS)
-app.use(express.static(path.join(__dirname, '../frontend'))); // serve root folder
-
-// Serve public folder (icons, images)
-app.use(express.static(path.join(__dirname, '../frontend/public')));
-
-// ✅ Catch-all route at the very bottom
-app.get("sw.js", (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/sw.js'));
-});
-
-// Save push subscription from client
+// Subscribe endpoint
 app.post('/subscribe', (req, res) => {
-  // ✅ Manually set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   const { username, subscription } = req.body;
   if (!username || !subscription) return res.status(400).send('Invalid');
 
@@ -81,161 +55,124 @@ app.post('/subscribe', (req, res) => {
   res.status(201).json({ message: 'Subscribed successfully' });
 });
 
-wss.on('connection', ws => {
-  ws.on('message', async msg => {
-    const data = JSON.parse(msg);
+// Socket.io logic
+let activeRooms = {}; // { roomName: [socket.id, ...] }
 
-    // 1️⃣ Initialize user
-    if (data.type === 'init') {
-      ws.username = data.username;
-      await sendGroupList(ws);
-    }
+io.on('connection', (socket) => {
+  console.log('✅ Socket connected:', socket.id);
 
-    // 2️⃣ Create Room
-    if (data.type === 'createRoom') {
-      const roomName = data.room.trim();
-      if (!roomName) return;
+  // Initialize user
+  socket.on('init', async (username) => {
+    socket.username = username;
+    const userRooms = await Room.find({ members: username });
+    socket.emit('joinedGroups', userRooms.map(r => r.name));
+  });
 
-      try {
-        const room = await Room.findOneAndUpdate(
-          { name: roomName },
-          { $addToSet: { members: ws.username } },
-          { upsert: true, new: true }
-        );
+  // Create room
+  socket.on('createRoom', async (roomName) => {
+    if (!roomName) return;
+    await Room.findOneAndUpdate(
+      { name: roomName },
+      { $addToSet: { members: socket.username } },
+      { upsert: true, new: true }
+    );
+    if (!activeRooms[roomName]) activeRooms[roomName] = [];
+    activeRooms[roomName].push(socket.id);
 
-        if (!activeRooms[roomName]) activeRooms[roomName] = { clients: [] };
-        if (!activeRooms[roomName].clients.includes(ws)) activeRooms[roomName].clients.push(ws);
+    const userRooms = await Room.find({ members: socket.username });
+    socket.emit('joinedGroups', userRooms.map(r => r.name));
+  });
 
-        await sendGroupList(ws);
-      } catch (err) {
-        console.error('Error creating room:', err.message);
-      }
-    }
+  // Join room
+  socket.on('join', async (roomName) => {
+    if (!roomName) return;
+    socket.room = roomName;
 
-    // 3️⃣ Join Room
-    if (data.type === 'join') {
-      const roomName = data.room.trim();
-      ws.room = roomName;
+    await Room.findOneAndUpdate(
+      { name: roomName },
+      { $addToSet: { members: socket.username } },
+      { upsert: true, new: true }
+    );
 
-      try {
-        const room = await Room.findOneAndUpdate(
-          { name: roomName },
-          { $addToSet: { members: ws.username } },
-          { upsert: true, new: true }
-        );
+    if (!activeRooms[roomName]) activeRooms[roomName] = [];
+    if (!activeRooms[roomName].includes(socket.id)) activeRooms[roomName].push(socket.id);
 
-        if (!activeRooms[roomName]) activeRooms[roomName] = { clients: [] };
-        if (!activeRooms[roomName].clients.includes(ws)) activeRooms[roomName].clients.push(ws);
+    const history = await Message.find({ room: roomName }).sort({ createdAt: 1 });
+    socket.emit('history', history.map(msg => ({
+      id: msg._id.toString(),
+      username: msg.username,
+      message: msg.message,
+      timestamp: msg.createdAt.getTime()
+    })));
 
-        const history = await Message.find({ room: roomName }).sort({ createdAt: 1 });
-        ws.send(JSON.stringify({
-          type: 'history',
-          messages: history.map(msg => ({
-            id: msg._id.toString(),
-            type: 'chat',
-            username: msg.username,
-            message: msg.message,
-            timestamp: msg.createdAt.getTime()
-          }))
-        }));
+    socket.to(roomName).emit('system', `${socket.username} joined the chat`);
+  });
 
-        broadcast(roomName, { type: 'system', message: `${ws.username} joined the chat` });
-        await sendGroupList(ws);
-      } catch (err) {
-        console.error('Error joining room:', err.message);
-      }
-    }
+  // Chat message
+  socket.on('message', async (msg) => {
+    if (!socket.room) return;
 
-    // 4️⃣ Chat Message
-    if (data.type === 'message') {
-      if (!ws.room) return;
+    const newMsg = await Message.create({
+      room: socket.room,
+      username: socket.username,
+      message: msg,
+      time: new Date()
+    });
 
-      const newMsg = await Message.create({
-        room: ws.room,
-        username: ws.username,
-        message: data.message,
-        time: new Date()
-      });
+    const msgData = {
+      id: newMsg._id.toString(),
+      username: socket.username,
+      message: msg,
+      time: newMsg.createdAt.getTime()
+    };
 
-      const msgData = {
-        type: 'chat',
-        id: newMsg._id.toString(),
-        username: ws.username,
-        message: data.message,
-        time: newMsg.createdAt.getTime()
-      };
+    // Broadcast in room
+    io.to(socket.room).emit('chat', msgData);
 
-      broadcast(ws.room, msgData);
-
-      // 🔔 Send push notifications to all other users in room
-      const room = await Room.findOne({ name: ws.room });
-      if (room) {
-        room.members.forEach(user => {
-          if (user !== ws.username && userSubscriptions[user]) {
-            userSubscriptions[user].forEach(sub => {
-              webpush.sendNotification(sub, JSON.stringify({
-                title: `New message from ${ws.username}`,
-                body: data.message,
-                icon: '/icon.png'
-              })).catch(err => console.error('Push error:', err));
-            });
-          }
-        });
-      }
-    }
-
-    // 5️⃣ Delete message
-    if (data.type === 'delete') {
-      if (!ws.room) return;
-      await Message.findByIdAndDelete(data.id);
-      broadcast(ws.room, { type: 'delete', id: data.id });
-    }
-
-    // 6️⃣ Delete Room
-    if (data.type === 'deleteGroup') {
-      const roomName = data.room;
-      const room = await Room.findOne({ name: roomName });
-      if (!room) return;
-
-      if (activeRooms[roomName]) {
-        activeRooms[roomName].clients.forEach(client => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'system', message: `Group "${roomName}" has been deleted.` }));
-            client.room = null;
-          }
-        });
-        delete activeRooms[roomName];
-      }
-
-      await Room.deleteOne({ name: roomName });
-      await Message.deleteMany({ room: roomName });
-
-      wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.username) sendGroupList(client);
+    // Push notifications
+    const room = await Room.findOne({ name: socket.room });
+    if (room) {
+      room.members.forEach(user => {
+        if (user !== socket.username && userSubscriptions[user]) {
+          userSubscriptions[user].forEach(sub => {
+            webpush.sendNotification(sub, JSON.stringify({
+              title: `New message from ${socket.username}`,
+              body: msg,
+              icon: '/icon.png'
+            })).catch(err => console.error('Push error:', err));
+          });
+        }
       });
     }
   });
 
-  ws.on('close', () => {
-    if (!ws.room || !activeRooms[ws.room]) return;
-    activeRooms[ws.room].clients = activeRooms[ws.room].clients.filter(c => c !== ws);
-    broadcast(ws.room, { type: 'system', message: `${ws.username} left the chat` });
+  // Delete message
+  socket.on('delete', async (id) => {
+    if (!socket.room) return;
+    await Message.findByIdAndDelete(id);
+    io.to(socket.room).emit('delete', id);
+  });
+
+  // Delete room
+  socket.on('deleteGroup', async (roomName) => {
+    const room = await Room.findOne({ name: roomName });
+    if (!room) return;
+
+    delete activeRooms[roomName];
+
+    await Room.deleteOne({ name: roomName });
+    await Message.deleteMany({ room: roomName });
+
+    io.emit('joinedGroups', await Room.find({}).then(r => r.map(r => r.name)));
+  });
+
+  // Disconnect
+  socket.on('disconnect', () => {
+    if (!socket.room || !activeRooms[socket.room]) return;
+    activeRooms[socket.room] = activeRooms[socket.room].filter(id => id !== socket.id);
+    socket.to(socket.room).emit('system', `${socket.username} left the chat`);
   });
 });
 
-// Broadcast to all clients in a room
-function broadcast(room, data) {
-  if (!activeRooms[room]) return;
-  activeRooms[room].clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(data));
-  });
-}
-
-// Send groups for a user
-async function sendGroupList(ws) {
-  const userRooms = await Room.find({ members: ws.username });
-  ws.send(JSON.stringify({ type: 'joinedGroups', groups: userRooms.map(r => r.name) }));
-}
-
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4500;
 server.listen(PORT, () => console.log(`Server running on ${PORT}`));
