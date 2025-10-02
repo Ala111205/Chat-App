@@ -15,7 +15,7 @@ const cors = require('cors');
 
 app.use(cors({
   origin: 'https://chat-app-indol-gamma.vercel.app', // allow your frontend URL
-  methods: ['GET','POST'],
+  methods: ['GET','POST', 'OPTIONS'],
   credentials: true
 }));
 
