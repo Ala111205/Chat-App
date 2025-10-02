@@ -67,8 +67,10 @@ function sendWS(data) {
 }
 
 // ✅ Initialize WS connection
+let reconnectAttempts = 0;
+const maxReconnect = 5;
+
 function connectWS() {
-  // Automatically choose URL based on environment
   const wsUrl = window.location.hostname === 'localhost'
     ? 'ws://localhost:4500'
     : 'wss://chat-app-kyp7.onrender.com';
@@ -77,33 +79,21 @@ function connectWS() {
 
   ws.addEventListener('open', () => {
     console.log("✅ WebSocket connected");
+    reconnectAttempts = 0;
     while (messageQueue.length > 0) ws.send(JSON.stringify(messageQueue.shift()));
     sendWS({ type: 'init', username });
     if (currentRoom) sendWS({ type: 'join', username, room: currentRoom });
   });
 
-  ws.addEventListener('message', event => {
-    const data = JSON.parse(event.data);
-
-    if (data.type === 'joinedGroups') renderGroups(data.groups);
-    else if (data.type === 'history') {
-      messagesEl.innerHTML = '';
-      data.messages.forEach(msg => renderMessage(msg));
-    } else if (data.type === 'delete') {
-      const msgEl = document.getElementById(data.id);
-      if (msgEl) msgEl.remove();
-    } else {
-      renderMessage(data);
-      if (data.type === "chat" && data.username !== username) {
-        showNotification(data);
-        sendPushNotification(data);
-      }
-    }
-  });
-
   ws.addEventListener('close', () => {
-    console.warn("🔌 WebSocket closed. Reconnecting in 2s...");
-    setTimeout(connectWS, 2000);
+    if (reconnectAttempts < maxReconnect) {
+      reconnectAttempts++;
+      const delay = 2000 * reconnectAttempts; // exponential backoff
+      console.warn(`🔌 WebSocket closed. Reconnecting in ${delay/1000}s...`);
+      setTimeout(connectWS, delay);
+    } else {
+      console.error("❌ WebSocket could not reconnect. Check server URL or server status.");
+    }
   });
 
   ws.addEventListener('error', err => console.error("⚠️ WebSocket error:", err));
@@ -128,7 +118,7 @@ function sendPushNotification(data) {
     navigator.serviceWorker.controller.postMessage({
       title: `💬 ${data.username} sent a message`,
       body: data.message,
-      icon: "chat-icon.png"
+      icon: "/icon.png"
     });
   }
 }
