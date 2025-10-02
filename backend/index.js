@@ -19,7 +19,7 @@ const io = new Server(server, {
       'http://localhost:3000',
       'http://127.0.0.1:5500'
     ],
-    methods: ['GET','POST'],
+    methods: ['GET','POST','OPTIONS'],
     credentials: true
   }
 });
@@ -52,6 +52,7 @@ app.post('/subscribe', (req, res) => {
   if (!userSubscriptions[username]) userSubscriptions[username] = [];
   userSubscriptions[username].push(subscription);
 
+  res.set("Access-Control-Allow-Origin", "https://chat-app-indol-gamma.vercel.app");
   res.status(201).json({ message: 'Subscribed successfully' });
 });
 
