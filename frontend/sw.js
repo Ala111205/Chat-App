@@ -3,26 +3,33 @@ const CACHE_NAME = 'chat-app-cache-v1';
 
 // Files to cache for offline usage
 const STATIC_ASSETS = [
-  '/',
   '/index.html',
   '/chat.html',
   '/client.js',
-  '/styles/styles.css', // path to your CSS
-  '/icon.png'           // path to your icon
+  '/styles/style.css',
+  '/icon.png'          
 ];
 
-// Install event - caching static assets
 self.addEventListener('install', event => {
-  console.log('[Service Worker] Installing...');
+  console.log('[SW] Installing...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('[Service Worker] Caching app shell');
-        return cache.addAll(STATIC_ASSETS);
+        console.log('[SW] Caching static assets...');
+        // Only add assets that exist
+        return Promise.all(
+          STATIC_ASSETS.map(asset => 
+            fetch(asset).then(resp => {
+              if (!resp.ok) throw new Error(`Failed to fetch ${asset}`);
+              return cache.put(asset, resp);
+            })
+          )
+        );
       })
   );
-  self.skipWaiting(); // Activate worker immediately
+  self.skipWaiting();
 });
+
 
 // Activate event - cleanup old caches
 self.addEventListener('activate', event => {
