@@ -68,7 +68,12 @@ function sendWS(data) {
 
 // ✅ Initialize WS connection
 function connectWS() {
-  ws = new WebSocket('wss://chat-app-kyp7.onrender.com');
+  // Automatically choose URL based on environment
+  const wsUrl = window.location.hostname === 'localhost'
+    ? 'ws://localhost:4500'
+    : 'wss://chat-app-kyp7.onrender.com';
+
+  const ws = new WebSocket(wsUrl);
 
   ws.addEventListener('open', () => {
     console.log("✅ WebSocket connected");

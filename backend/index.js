@@ -30,7 +30,16 @@ let activeRooms = {}; // { roomName: { clients: [] } }
 let userSubscriptions = {}; // { username: [subscriptionObj] }
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
+// Serve frontend static files (HTML, JS, CSS)
+app.use(express.static(path.join(__dirname, '../frontend'))); // serve root folder
+
+// Serve public folder (icons, images)
+app.use(express.static(path.join(__dirname, '../frontend/public')));
+
+// ✅ Catch-all route at the very bottom
+app.get("sw.js", (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/sw.js'));
+});
 
 // Save push subscription from client
 app.post('/subscribe', (req, res) => {
