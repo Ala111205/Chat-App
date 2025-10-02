@@ -13,13 +13,29 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const cors = require('cors');
 
+const allowedOrigins = [
+  'https://chat-app-indol-gamma.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:5500', // Live Server
+  'http://localhost:4500', 
+];
+
 app.use(cors({
-  origin: 'https://chat-app-indol-gamma.vercel.app', // allow your frontend URL
-  methods: ['GET','POST', 'OPTIONS'],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, service worker)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET','POST','OPTIONS'],
+  allowedHeaders: ['Content-Type'],
   credentials: true
 }));
 
-app.options('*', cors());
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -52,6 +68,11 @@ app.get("sw.js", (req, res) => {
 
 // Save push subscription from client
 app.post('/subscribe', (req, res) => {
+  // ✅ Manually set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
   const { username, subscription } = req.body;
   if (!username || !subscription) return res.status(400).send('Invalid');
 
