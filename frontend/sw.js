@@ -7,7 +7,7 @@ const STATIC_ASSETS = [
   '/chat.html',
   '/client.js',
   '/styles/style.css',
-  '/public/icon.png'          
+  '/icon.png'          
 ];
 
 self.addEventListener('install', event => {
@@ -49,7 +49,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
-      .then(response => response || fetch(event.request))
+      .then(response => response || fetch(event.request).catch(() => {
+        if (event.request.url.endsWith('icon.png')) {
+          return caches.match('/icon.png'); // fallback cached version
+        }
+      }))
   );
 });
 

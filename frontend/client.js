@@ -44,7 +44,7 @@ async function subscribeUser() {
     applicationServerKey: urlBase64ToUint8Array('BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA')
   });
 
-  await fetch('/subscribe', {
+  await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, subscription })
