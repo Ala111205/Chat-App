@@ -136,15 +136,18 @@ addRoomIcon.addEventListener('click', () => {
 
 // ✅ Group click
 groupsEl.addEventListener("click", (e) => {
-  if (e.target.tagName === "LI") {
-    currentRoom = e.target.dataset.room;
-    localStorage.setItem('room', currentRoom);
-    messagesEl.innerHTML = '';
-    sendWS({ type: 'join', username, room: currentRoom });
-    if (window.innerWidth <= 530) {
-      groupList.classList.remove("active");
-      chatContainer.classList.add("active");
-    }
+  const li = e.target.closest("li")
+  if (!li) return;
+  currentRoom = e.target.dataset.room;
+  console.log("Joining room:", currentRoom);
+  localStorage.setItem('room', currentRoom);
+  messagesEl.innerHTML = '';
+  sendWS({ type: 'join', username, room: currentRoom });
+  joinForm.classList.remove("show");
+  groupsEl.classList.remove("down");
+  if (window.innerWidth <= 530) {
+    groupList.classList.remove("active");
+    chatContainer.classList.add("active");
   }
 });
 

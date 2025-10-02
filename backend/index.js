@@ -30,7 +30,7 @@ let activeRooms = {}; // { roomName: { clients: [] } }
 let userSubscriptions = {}; // { username: [subscriptionObj] }
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Save push subscription from client
 app.post('/subscribe', (req, res) => {
