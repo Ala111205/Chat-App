@@ -112,7 +112,7 @@ function showNotification(data) {
     const formattedTime = formatMessageTime(data.timestamp || data.time);
     new Notification(`💬 New message from ${data.username}`, {
       body: `${data.message}\n(${formattedTime})`,
-      icon: "chat-icon.png"
+      icon: "/icon.png"
     });
   }
 }
