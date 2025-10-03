@@ -62,7 +62,7 @@ let userSubscriptions = {};
 
 app.options('/subscribe', cors(corsOptions)); // Preflight
 // ✅ Subscribe endpoint with CORS applied directly
-app.post('/subscribe', cors(corsOptions) (req, res) => {
+app.post('/subscribe', cors(corsOptions), (req, res) => {
   const { username, subscription } = req.body;
   if (!username || !subscription) return res.status(400).send('Invalid');
 
