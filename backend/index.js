@@ -192,7 +192,7 @@ io.on('connection', (socket) => {
   });
 
   // Delete message
-  socket.on('delete', async (id) => {
+  socket.on('delete', async (data) => {
     const { room, id } = data;
   if (!room || !id) return;
     await Message.findByIdAndDelete(id);
