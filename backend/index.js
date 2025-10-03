@@ -18,20 +18,19 @@ const allowedOrigins = [
   'http://127.0.0.1:5500'
 ];
 
-// ✅ Subscribe route with per-route CORS
-const corsOptions = {
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like Postman)
+
+app.use(cors({
+  origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS"));
     }
   },
-  methods: ['POST', 'OPTIONS'],
   credentials: true,
-  allowedHeaders: ['Content-Type']
-};
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
 
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
@@ -60,16 +59,41 @@ webpush.setVapidDetails(
 let userSubscriptions = {};
 
 
-app.options('/subscribe', cors(corsOptions)); // Preflight
-// ✅ Subscribe endpoint with CORS applied directly
-app.post('/subscribe', cors(corsOptions), (req, res) => {
-  const { username, subscription } = req.body;
-  if (!username || !subscription) return res.status(400).send('Invalid');
+// ✅ Preflight for /subscribe
+app.options('/subscribe', (req, res) => {
+  const origin = req.headers.origin;
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    return res.sendStatus(204);
+  } else {
+    return res.sendStatus(403); // Origin not allowed
+  }
+});
 
-  if (!userSubscriptions[username]) userSubscriptions[username] = [];
+// ✅ Subscribe endpoint with CORS
+app.post('/subscribe', (req, res) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  }
+
+  const { username, subscription } = req.body;
+  if (!username || !subscription) {
+    return res.status(400).send('Invalid');
+  }
+
+  if (!userSubscriptions[username]) {
+    userSubscriptions[username] = [];
+  }
   userSubscriptions[username].push(subscription);
 
-  res.status(201).json({ message: 'Subscribed successfully' });
+  return res.status(201).json({ message: 'Subscribed successfully' });
 });
 
 // Socket.io logic
