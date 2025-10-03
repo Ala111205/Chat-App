@@ -196,11 +196,14 @@ io.on('connection', (socket) => {
 
   // Delete message
   socket.on('delete', async (data) => {
-    const room = data.room || socket.room; // fallback
     const id = data.id;
-    if (!room || !id) return;
-    await Message.findByIdAndDelete(id);
-    io.to(room).emit('delete', id);
+    if (!id) return;
+
+    const deleted = await Message.findByIdAndDelete(id);
+    if (deleted) {
+      // Emit to all sockets in the room
+      io.to(deleted.room).emit('delete', id);
+    } 
   });
 
   // Delete room
