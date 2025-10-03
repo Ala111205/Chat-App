@@ -270,22 +270,15 @@ function renderMessage(data) {
     const formattedTime = formatMessageTime(data.timestamp || data.time);
     div.innerHTML = `<div style="display:flex; flex-direction:column; gap:10px">
                         ${data.username} [${formattedTime}]
-                        <div class="message"><b>${data.message}</b></div>
+                        <div class="messages"><b>${data.message}</b></div>
                      </div>`;
 
     if (data.username === username) {
-      const message = div.querySelector(".message");
+      const message = div.querySelector(".messages");
       const btn = document.createElement('button');
       btn.className = 'delete-btn';
       btn.textContent = 'Delete';
       message.appendChild(btn);
-
-      btn.addEventListener('click', () => {
-        // ✅ Optimistic removal
-        div.remove();
-        // ✅ Tell server
-        socket.emit('delete', { room: currentRoom, id: data.id });
-      });
 
       div.addEventListener('contextmenu', e => { e.preventDefault(); btn.classList.add('show'); });
       document.addEventListener('click', e => { if (!div.contains(e.target)) btn.classList.remove('show'); });
@@ -294,7 +287,7 @@ function renderMessage(data) {
       div.addEventListener('touchstart', () => { pressTimer = setTimeout(() => btn.classList.add('show'), 600); });
       div.addEventListener('touchend', () => clearTimeout(pressTimer));
 
-      btn.addEventListener('click', () => socket.emit('delete', data.id));
+      btn.addEventListener('click', () =>{ socket.emit('delete', { room: currentRoom, id: data.id })});
     }
   }
 
