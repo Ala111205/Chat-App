@@ -158,7 +158,8 @@ io.on('connection', (socket) => {
     const tempId = data.tempId;
     if (!room || !msg) return;
 
-    socket.room = room; // Ensure socket.room is updated
+    // Ensure socket joined the room
+    socket.join(room);
 
     const newMsg = await Message.create({
       room: socket.room,

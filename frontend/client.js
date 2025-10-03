@@ -1,6 +1,6 @@
 // ✅ Socket.io setup
 const socket = io("https://chat-app-kyp7.onrender.com", {
-  transports: ["websocket"],
+  transports: ["websocket", "polling"],
   withCredentials: true
 });
 
