@@ -160,7 +160,7 @@ inputEl.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage()
 function sendMessage() {
   const msg = inputEl.value.trim();
   if (!msg || !currentRoom) return;
-  socket.emit('message', msg); // ✅ fixed (removed currentRoom)
+  socket.emit('message', { room: currentRoom, msg }); // ✅ fixed (removed currentRoom)
    // ✅ Render immediately (optimistic update)
   const tempMsg = {
     id: `temp-${Date.now()}`,
@@ -284,7 +284,7 @@ function renderMessage(data) {
         // ✅ Optimistic removal
         div.remove();
         // ✅ Tell server
-        socket.emit('delete', data.id);
+        socket.emit('delete', { room: currentRoom, id: data.id });
       });
 
       div.addEventListener('contextmenu', e => { e.preventDefault(); btn.classList.add('show'); });
