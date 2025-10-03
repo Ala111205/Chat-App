@@ -257,7 +257,7 @@ function renderMessage(data) {
           socket.emit('delete', { id: data.id });
         }
         const el = document.getElementById(data.id);
-        if (el) el.remove(); // optimistic removal
+        if (el) el.remove();// optimistic removal
       });
     }
   }
