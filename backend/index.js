@@ -24,9 +24,6 @@ const corsOptions = {
   credentials: true
 };
 
-// ✅ Apply global CORS
-app.use(cors(corsOptions));
-
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
 const io = new Server(server, {
@@ -53,29 +50,8 @@ webpush.setVapidDetails(
 // Push subscriptions storage
 let userSubscriptions = {};
 
-// Handle preflight for /subscribe
-app.options('/subscribe', (req, res) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    return res.sendStatus(204); // No Content
-  } else {
-    return res.sendStatus(403); // Forbidden
-  }
-});
-
-// Subscribe endpoint
-app.post('/subscribe',(req, res) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-  }
-
-
+// ✅ Subscribe endpoint with CORS applied directly
+app.post('/subscribe', cors(corsOptions), (req, res) => {
   const { username, subscription } = req.body;
   if (!username || !subscription) return res.status(400).send('Invalid');
 
