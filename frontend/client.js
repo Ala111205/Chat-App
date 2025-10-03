@@ -46,7 +46,8 @@ async function subscribeUser() {
   await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, subscription })
+    body: JSON.stringify({ username, subscription }),
+    credentials: 'include'
   });
 
   console.log('Subscribed for push notifications');

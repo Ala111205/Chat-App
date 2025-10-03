@@ -54,7 +54,7 @@ webpush.setVapidDetails(
 let userSubscriptions = {};
 
 // Subscribe endpoint
-app.post('/subscribe', (req, res) => {
+app.post('/subscribe', cors(corsOptions) ,(req, res) => {
   const { username, subscription } = req.body;
   if (!username || !subscription) return res.status(400).send('Invalid');
 
