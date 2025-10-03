@@ -114,6 +114,14 @@ function sendMessage() {
   const msg = inputEl.value.trim();
   if (!msg || !currentRoom) return;
   socket.emit('message', msg); // ✅ fixed (removed currentRoom)
+   // ✅ Render immediately (optimistic update)
+  const tempMsg = {
+    id: `temp-${Date.now()}`,
+    username,
+    message: msg,
+    timestamp: Date.now()
+  };
+  renderMessage(tempMsg);
   inputEl.value = '';
 }
 
@@ -224,6 +232,13 @@ function renderMessage(data) {
       btn.className = 'delete-btn';
       btn.textContent = 'Delete';
       message.appendChild(btn);
+
+      btn.addEventListener('click', () => {
+        // ✅ Optimistic removal
+        div.remove();
+        // ✅ Tell server
+        socket.emit('delete', data.id);
+      });
 
       div.addEventListener('contextmenu', e => { e.preventDefault(); btn.classList.add('show'); });
       document.addEventListener('click', e => { if (!div.contains(e.target)) btn.classList.remove('show'); });
