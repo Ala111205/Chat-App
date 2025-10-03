@@ -61,50 +61,97 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // ✅ Socket.io event listeners
+io.on('connection', (socket) => {
+  console.log('✅ Socket connected:', socket.id);
 
-// Init
-socket.on('connect', () => {
-  console.log('✅ Socket.io connected');
-  socket.emit('init', username);
-  if (currentRoom) socket.emit('join', currentRoom);
+  // Initialize user
+  socket.on('init', async (username) => {
+    socket.username = username;
+    const userRooms = await Room.find({ members: username });
+    socket.emit('joinedGroups', userRooms.map(r => r.name));
+  });
+
+  // Join room
+  socket.on('join', async (roomName) => {
+    if (!roomName) return;
+    socket.room = roomName;
+    socket.join(roomName);
+
+    await Room.findOneAndUpdate(
+      { name: roomName },
+      { $addToSet: { members: socket.username } },
+      { upsert: true, new: true }
+    );
+
+    // Send chat history immediately
+    const history = await Message.find({ room: roomName }).sort({ createdAt: 1 });
+    socket.emit('history', history.map(msg => ({
+      id: msg._id.toString(),
+      username: msg.username,
+      message: msg.message,
+      timestamp: msg.createdAt.getTime()
+    })));
+
+    // Notify others in the room
+    socket.to(roomName).emit('system', `${socket.username} joined the chat`);
+  });
+
+  // Chat message (real-time)
+  socket.on('message', async (data) => {
+    const { room, msg } = data;
+    if (!room || !msg) return;
+
+    // Save to DB
+    const newMsg = await Message.create({
+      room,
+      username: socket.username,
+      message: msg,
+      time: new Date()
+    });
+
+    const msgData = {
+      id: newMsg._id.toString(),
+      username: socket.username,
+      message: msg,
+      timestamp: newMsg.createdAt.getTime()
+    };
+
+    // Broadcast to everyone in the room
+    io.to(room).emit('chat', msgData);
+
+    // Push notifications for other users
+    const roomDoc = await Room.findOne({ name: room });
+    if (roomDoc) {
+      roomDoc.members.forEach(user => {
+        if (user !== socket.username && userSubscriptions[user]) {
+          userSubscriptions[user].forEach(sub => {
+            webpush.sendNotification(sub, JSON.stringify({
+              title: `New message from ${socket.username}`,
+              body: msg,
+              icon: '/icon.png'
+            })).catch(err => console.error('Push error:', err));
+          });
+        }
+      });
+    }
+  });
+
+  // Delete message (real-time)
+  socket.on('delete', async (data) => {
+    const { room, id } = data;
+    if (!room || !id) return;
+
+    await Message.findByIdAndDelete(id);
+    io.to(room).emit('delete', id);
+  });
+
+  // Disconnect
+  socket.on('disconnect', () => {
+    if (!socket.room) return;
+    socket.to(socket.room).emit('system', `${socket.username} left the chat`);
+  });
 });
 
-// Receive groups
-socket.on('joinedGroups', (groups) => {
-  renderGroups(groups);
-});
-
-// Receive chat history
-socket.on('history', (messages) => {
-  messagesEl.innerHTML = '';
-  messages.forEach(msg => renderMessage(msg));
-});
-
-// Receive new message
-socket.on('chat', data => {
-  renderMessage(data);
-  showNotification(data); // 🔔 Local fallback notification
-});
-
-// System messages
-socket.on('system', msg => renderMessage({ type: 'system', message: msg }));
-
-// ✅ Handle disconnects
-socket.on("disconnect", (reason) => {
-  console.warn("❌ Disconnected from backend! Reason:", reason);
-
-  renderMessage({ type: 'system', message: "⚠️ You got disconnected from the server." });
-
-  setTimeout(() => {
-    console.log("🔄 Attempting to reconnect...");
-  }, 2000);
-});
-
-// ✅ Listen for delete events
-socket.on('delete', (id) => {
-  const msgEl = document.getElementById(id);
-  if (msgEl) msgEl.remove();
-});
 
 // ✅ Send message
 sendBtn.addEventListener('click', sendMessage);
