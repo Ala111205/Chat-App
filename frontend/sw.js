@@ -48,14 +48,28 @@ self.addEventListener('activate', event => {
 // Fetch event - respond with cache first, then network
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request)
-      .then(response => response || fetch(event.request).catch(() => {
+    caches.match(event.request).then(response => {
+      // If found in cache, return it
+      if (response) return response;
+
+      // Otherwise try network
+      return fetch(event.request).catch(() => {
+        // If it's the icon, return cached fallback
         if (event.request.url.endsWith('icon.png')) {
-          return caches.match('/icon.png'); // fallback cached version
+          return caches.match('/icon.png');
         }
-      }))
+
+        // Otherwise, return a fallback Response instead of undefined
+        return new Response('Offline', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain' }
+        });
+      });
+    })
   );
 });
+
 
 // Push event - show notifications
 self.addEventListener('push', event => {
