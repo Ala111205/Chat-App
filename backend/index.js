@@ -11,28 +11,29 @@ const Room = require('./models/room');
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors({
-  origin: [
-    'https://chat-app-indol-gamma.vercel.app',
-    'http://localhost:3000',
-    'http://127.0.0.1:5500'
-  ],
+// ✅ Define allowed origins once
+const allowedOrigins = [
+  'https://chat-app-indol-gamma.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:5500'
+];
+
+const corsOptions = {
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'OPTIONS'],
   credentials: true
-}));
+};
+
+// ✅ Apply global CORS
+app.use(cors(corsOptions));
+
+// ✅ Handle preflight requests
+app.options('*', cors(corsOptions));
 
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
 const io = new Server(server, {
-  cors: {
-    origin: [
-      'https://chat-app-indol-gamma.vercel.app',
-      'http://localhost:3000',
-      'http://127.0.0.1:5500'
-    ],
-    methods: ['GET','POST','OPTIONS'],
-    credentials: true
-  }
+  cors: corsOptions
 });
 
 // Middleware
