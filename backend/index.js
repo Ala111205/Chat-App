@@ -27,9 +27,6 @@ const corsOptions = {
 // ✅ Apply global CORS
 app.use(cors(corsOptions));
 
-// ✅ Handle preflight requests
-app.options('*', cors(corsOptions));
-
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
 const io = new Server(server, {
