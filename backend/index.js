@@ -154,6 +154,7 @@ io.on('connection', (socket) => {
   socket.on('message', async (data) => {
     const msg = data.msg;
     const room = data.room || socket.room;
+    const tempId = data.tempId;
     if (!room || !msg) return;
 
     socket.room = room; // Ensure socket.room is updated
@@ -170,7 +171,7 @@ io.on('connection', (socket) => {
       username: socket.username,
       message: msg,
       timestamp: newMsg.createdAt.getTime(),
-      tempId: tempId
+      tempId
     };
 
     // Broadcast in room
