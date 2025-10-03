@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const webpush = require('web-push');
 const Message = require('./models/message');
 const Room = require('./models/room');
