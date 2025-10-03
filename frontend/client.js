@@ -81,7 +81,10 @@ socket.on('history', (messages) => {
 });
 
 // Receive new message
-socket.on('chat', data => renderMessage(data));
+socket.on('chat', data => {
+  renderMessage(data);
+  showNotification(data); // 🔔 Local fallback notification
+});
 
 // System messages
 socket.on('system', msg => renderMessage({ type: 'system', message: msg }));
@@ -90,16 +93,18 @@ socket.on('system', msg => renderMessage({ type: 'system', message: msg }));
 socket.on("disconnect", (reason) => {
   console.warn("❌ Disconnected from backend! Reason:", reason);
 
-  // Optional: show a system message in the chat
   renderMessage({ type: 'system', message: "⚠️ You got disconnected from the server." });
 
-  // Optional: try reconnecting (Socket.IO auto-reconnects by default)
-  // If you want a custom retry message:
   setTimeout(() => {
     console.log("🔄 Attempting to reconnect...");
   }, 2000);
 });
 
+// ✅ Listen for delete events
+socket.on('delete', (id) => {
+  const msgEl = document.getElementById(id);
+  if (msgEl) msgEl.remove();
+});
 
 // ✅ Send message
 sendBtn.addEventListener('click', sendMessage);
@@ -108,7 +113,7 @@ inputEl.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage()
 function sendMessage() {
   const msg = inputEl.value.trim();
   if (!msg || !currentRoom) return;
-  socket.emit('message', msg, currentRoom);
+  socket.emit('message', msg); // ✅ fixed (removed currentRoom)
   inputEl.value = '';
 }
 
