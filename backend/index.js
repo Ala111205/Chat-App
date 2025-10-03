@@ -152,7 +152,8 @@ io.on('connection', (socket) => {
 
   // Chat message
   socket.on('message', async (data) => {
-    const { room, msg } = data;
+    const msg = data.msg;
+    const room = data.room || socket.room;
     if (!room || !msg) return;
 
     socket.room = room; // Ensure socket.room is updated
@@ -193,8 +194,9 @@ io.on('connection', (socket) => {
 
   // Delete message
   socket.on('delete', async (data) => {
-    const { room, id } = data;
-  if (!room || !id) return;
+    const room = data.room || socket.room; // fallback
+    const id = data.id;
+    if (!room || !id) return;
     await Message.findByIdAndDelete(id);
     io.to(room).emit('delete', id);
   });
