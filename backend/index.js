@@ -31,7 +31,7 @@ const corsOptions = {
   allowedHeaders: ["Content-Type"]
 };
 
-app.use(cros(corsOptions))
+app.use(cors(corsOptions))
 
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
