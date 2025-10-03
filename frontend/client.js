@@ -252,7 +252,13 @@ function renderMessage(data) {
       div.addEventListener('touchstart', () => { pressTimer = setTimeout(() => btn.classList.add('show'), 600); });
       div.addEventListener('touchend', () => clearTimeout(pressTimer));
 
-      btn.addEventListener('click', () => socket.emit('delete', { room: currentRoom, id: data.id }));
+      btn.addEventListener('click', () => {
+        if (!data.id.startsWith("temp-")) { // only delete saved messages
+          socket.emit('delete', { id: data.id });
+        }
+        const el = document.getElementById(data.id);
+        if (el) el.remove(); // optimistic removal
+      });
     }
   }
 
