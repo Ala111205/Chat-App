@@ -162,7 +162,7 @@ io.on('connection', (socket) => {
     socket.join(room);
 
     const newMsg = await Message.create({
-      room: socket.room,
+      room,
       username: socket.username,
       message: msg,
       time: new Date()
@@ -177,7 +177,7 @@ io.on('connection', (socket) => {
     };
 
     // Broadcast in room
-    io.to(socket.room).emit('chat', msgData);
+    io.to(room).emit('chat', msgData);
 
     // Push notifications
     const roomDoc = await Room.findOne({ name: socket.room });
@@ -205,7 +205,11 @@ io.on('connection', (socket) => {
     if (!deleted) return;
 
     // Use deleted.room from DB
-    io.to(deleted.room).emit('delete', deleted._id.toString());
+     io.in(deleted.room).fetchSockets().then(sockets => {
+      if (sockets.length > 0) {
+        io.to(deleted.room).emit('delete', deleted._id.toString());
+      }
+    });
   });
 
   // Delete room

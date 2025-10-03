@@ -63,9 +63,14 @@ function urlBase64ToUint8Array(base64String) {
 // ✅ Socket.io event listeners
 // Init
 socket.on('connect', () => {
-  console.log('✅ Socket.io connected');
+  console.log('✅ Socket connected');
   socket.emit('init', username);
-  if (currentRoom) socket.emit('join', currentRoom);
+
+  // Only join if currentRoom exists
+  if (currentRoom) {
+    // Wait a tick to ensure socket is fully connected
+    setTimeout(() => socket.emit('join', currentRoom), 100);
+  }
 });
 
 // Receive groups
