@@ -76,7 +76,14 @@ socket.on('joinedGroups', (groups) => {
 // Receive chat history
 socket.on('history', (messages) => {
   messagesEl.innerHTML = '';
-  messages.forEach(msg => renderMessage(msg));
+  messages.forEach(msg => {
+    renderMessage({
+      id: msg.id, // ✅ must be MongoDB _id
+      username: msg.username,
+      message: msg.message,
+      timestamp: msg.timestamp
+    });
+  });
 });
 
 // Receive new message
@@ -253,11 +260,14 @@ function renderMessage(data) {
       div.addEventListener('touchend', () => clearTimeout(pressTimer));
 
       btn.addEventListener('click', () => {
-        if (!data.id.startsWith("temp-")) { // only delete saved messages
+        // Only delete messages that exist in DB
+        if (!data.id.startsWith("temp-")) {
           socket.emit('delete', { id: data.id });
         }
+        
+        // Optimistic removal
         const el = document.getElementById(data.id);
-        if (el) el.remove();// optimistic removal
+        if (el) el.remove();
       });
     }
   }

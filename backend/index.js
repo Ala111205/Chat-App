@@ -129,6 +129,7 @@ io.on('connection', (socket) => {
   socket.on('join', async (roomName) => {
     if (!roomName) return;
     socket.room = roomName;
+    socket.join(roomName); // ✅ join socket.io room
 
     await Room.findOneAndUpdate(
       { name: roomName },
@@ -200,10 +201,10 @@ io.on('connection', (socket) => {
     if (!id) return;
 
     const deleted = await Message.findByIdAndDelete(id);
-    if (deleted) {
-      // Emit to all sockets in the room
-      io.to(deleted.room).emit('delete', id);
-    } 
+    if (!deleted) return;
+
+    // Use deleted.room from DB
+    io.to(deleted.room).emit('delete', deleted._id.toString());
   });
 
   // Delete room
