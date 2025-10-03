@@ -11,6 +11,16 @@ const Room = require('./models/room');
 const app = express();
 const server = http.createServer(app);
 
+app.use(cors({
+  origin: [
+    'https://chat-app-indol-gamma.vercel.app',
+    'http://localhost:3000',
+    'http://127.0.0.1:5500'
+  ],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
+}));
+
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
 const io = new Server(server, {
