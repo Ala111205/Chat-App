@@ -151,8 +151,11 @@ io.on('connection', (socket) => {
   });
 
   // Chat message
-  socket.on('message', async (msg) => {
-    if (!socket.room) return;
+  socket.on('message', async (data) => {
+    const { room, msg } = data;
+    if (!room || !msg) return;
+
+    socket.room = room; // Ensure socket.room is updated
 
     const newMsg = await Message.create({
       room: socket.room,
@@ -172,8 +175,8 @@ io.on('connection', (socket) => {
     io.to(socket.room).emit('chat', msgData);
 
     // Push notifications
-    const room = await Room.findOne({ name: socket.room });
-    if (room) {
+    const roomDoc = await Room.findOne({ name: socket.room });
+    if (roomDoc) {
       room.members.forEach(user => {
         if (user !== socket.username && userSubscriptions[user]) {
           userSubscriptions[user].forEach(sub => {
@@ -190,9 +193,10 @@ io.on('connection', (socket) => {
 
   // Delete message
   socket.on('delete', async (id) => {
-    if (!socket.room) return;
+    const { room, id } = data;
+  if (!room || !id) return;
     await Message.findByIdAndDelete(id);
-    io.to(socket.room).emit('delete', id);
+    io.to(room).emit('delete', id);
   });
 
   // Delete room
