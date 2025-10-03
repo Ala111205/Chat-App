@@ -62,27 +62,18 @@ let userSubscriptions = {};
 
 // ✅ Preflight for /subscribe
 app.options('/subscribe', (req, res) => {
-  const origin = req.headers.origin;
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     return res.sendStatus(204);
-  } else {
-    return res.sendStatus(403); // Origin not allowed
-  }
 });
 
 // ✅ Subscribe endpoint with CORS
 app.post('/subscribe', (req, res) => {
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  }
 
   const { username, subscription } = req.body;
   if (!username || !subscription) {
