@@ -53,8 +53,29 @@ webpush.setVapidDetails(
 // Push subscriptions storage
 let userSubscriptions = {};
 
+// Handle preflight for /subscribe
+app.options('/subscribe', (req, res) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    return res.sendStatus(204); // No Content
+  } else {
+    return res.sendStatus(403); // Forbidden
+  }
+});
+
 // Subscribe endpoint
-app.post('/subscribe', cors(corsOptions) ,(req, res) => {
+app.post('/subscribe',(req, res) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+
+
   const { username, subscription } = req.body;
   if (!username || !subscription) return res.status(400).send('Invalid');
 
