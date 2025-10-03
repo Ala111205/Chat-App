@@ -169,7 +169,8 @@ io.on('connection', (socket) => {
       id: newMsg._id.toString(),
       username: socket.username,
       message: msg,
-      time: newMsg.createdAt.getTime()
+      timestamp: newMsg.createdAt.getTime(),
+      tempId: tempId
     };
 
     // Broadcast in room

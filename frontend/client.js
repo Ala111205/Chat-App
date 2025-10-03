@@ -80,9 +80,15 @@ socket.on('history', (messages) => {
 });
 
 // Receive new message
-socket.on('chat', data => {
-  renderMessage(data);
-  showNotification(data); // 🔔 Local fallback notification
+socket.on('chat', msgData => {
+  if (msgData.tempId) {
+    const tempMsgEl = document.getElementById(msgData.tempId);
+    if (tempMsgEl) tempMsgEl.remove();
+  }
+
+  // Render the real message from server
+  renderMessage(msgData);
+  showNotification(msgData); // 🔔 Local fallback notification
 });
 
 // System messages
@@ -113,16 +119,22 @@ inputEl.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage()
 function sendMessage() {
   const msg = inputEl.value.trim();
   if (!msg || !currentRoom) return;
-  socket.emit('message', { room: currentRoom, msg }); // ✅ fixed (removed currentRoom)
-   // ✅ Render immediately (optimistic update)
-  const tempMsg = {
-    id: `temp-${Date.now()}`,
+
+  // temporary ID
+  const tempId = `temp-${Date.now()}`;
+
+  // Optimistic render
+  renderMessage({
+    id: tempId,
     username,
     message: msg,
     timestamp: Date.now()
-  };
-  renderMessage(tempMsg);
+  });
+
   inputEl.value = '';
+
+  // Send to server
+  socket.emit('message', { room: currentRoom, msg });
 }
 
 // ✅ Join/create room
