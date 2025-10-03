@@ -18,8 +18,7 @@ const allowedOrigins = [
   'http://127.0.0.1:5500'
 ];
 
-
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -30,7 +29,9 @@ app.use(cors({
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type"]
-}));
+};
+
+app.use(cros(corsOptions))
 
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
