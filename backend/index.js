@@ -18,10 +18,19 @@ const allowedOrigins = [
   'http://127.0.0.1:5500'
 ];
 
+// ✅ Subscribe route with per-route CORS
 const corsOptions = {
-  origin: allowedOrigins,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like Postman)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['POST', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type']
 };
 
 // ✅ Socket.io setup
@@ -50,8 +59,10 @@ webpush.setVapidDetails(
 // Push subscriptions storage
 let userSubscriptions = {};
 
+
+app.options('/subscribe', cors(corsOptions)); // Preflight
 // ✅ Subscribe endpoint with CORS applied directly
-app.post('/subscribe', cors(corsOptions), (req, res) => {
+app.post('/subscribe', (req, res) => {
   const { username, subscription } = req.body;
   if (!username || !subscription) return res.status(400).send('Invalid');
 
