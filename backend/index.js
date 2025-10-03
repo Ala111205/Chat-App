@@ -25,8 +25,6 @@ const io = new Server(server, {
   }
 });
 
-app.options("*", cors());
-
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
