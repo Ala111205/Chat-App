@@ -129,7 +129,6 @@ socket.on('chat', msgData => {
 
   // Render the real message from server
   renderMessage(msgData);
-  showNotification(msgData); // 🔔 Local fallback notification
 });
 
 // System messages
