@@ -82,7 +82,11 @@ app.post('/subscribe', cors(corsOptions), (req, res) => {
   if (!userSubscriptions[username]) {
     userSubscriptions[username] = [];
   }
-  userSubscriptions[username].push(subscription);
+  
+  const exists = userSubscriptions[username].some(sub => sub.endpoint === subscription.endpoint);
+  if (!exists) {
+    userSubscriptions[username].push(subscription);
+  }
 
   return res.status(201).json({ message: 'Subscribed successfully' });
 });

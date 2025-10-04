@@ -1,5 +1,5 @@
 // Service Worker version
-const CACHE_NAME = 'chat-app-cache-v1';
+const CACHE_NAME = 'chat-app-cache-v2';
 
 // Files to cache for offline usage
 const STATIC_ASSETS = [
