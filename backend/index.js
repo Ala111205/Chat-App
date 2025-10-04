@@ -86,6 +86,9 @@ app.post('/subscribe', cors(corsOptions), (req, res) => {
   const exists = userSubscriptions[username].some(sub => sub.endpoint === subscription.endpoint);
   if (!exists) {
     userSubscriptions[username].push(subscription);
+    console.log(`✅ New subscription added for ${username}`);
+  } else {
+    console.log(`ℹ️ Existing subscription reused for ${username}`);
   }
 
   return res.status(201).json({ message: 'Subscribed successfully' });
@@ -161,69 +164,73 @@ io.on('connection', (socket) => {
   // Chat message
   socket.on('message', async (data) => {
     try {
-      console.log("🔹 Incoming message data:", data);
+      console.log("🔹 Incoming message:", data);
 
-      const msg = data && data.msg;
-      const room = (data && data.room) || socket.room;
-      const tempId = data && data.tempId;
+      const msg = data?.msg?.trim();
+      const room = data?.room || socket.room;
+      const tempId = data?.tempId || null;
+      const sender = socket.username;
 
-      console.log("🔹 Parsed -> room:", room, "msg:", msg, "tempId:", tempId);
+      if (!room || !msg) return;
 
-      if (!room || !msg) {
-        console.log("⚠️ Missing room or msg, skipping");
-        return;
-      }
-
-      // Make sure socket has joined the room on the server side
+      // Ensure socket joined
       await socket.join(room);
       socket.room = room;
 
-      // Persist message
+      // Save message to DB
       const newMsg = await Message.create({
         room,
-        username: socket.username,
+        username: sender,
         message: msg,
         time: new Date()
       });
 
       const msgData = {
         id: newMsg._id.toString(),
-        username: socket.username,
+        username: sender,
         message: msg,
         timestamp: newMsg.createdAt.getTime(),
-        tempId: tempId || null
+        tempId
       };
 
-      // Broadcast to everyone in the room
+      // Broadcast chat to all sockets in the room (including sender for UI sync)
       io.to(room).emit('chat', msgData);
 
-      // Push notifications to room members (except sender)
+      // Get room members
       const roomDoc = await Room.findOne({ name: room });
-      if (roomDoc && roomDoc.members && Array.isArray(roomDoc.members)) {
-        for (const user of roomDoc.members) {
-          if (user === socket.username) continue; // skip sender completely
-          if (!userSubscriptions[user]) continue;
+      if (!roomDoc || !Array.isArray(roomDoc.members)) return;
 
-          // Loop over each subscription for that user
-          userSubscriptions[user] = userSubscriptions[user].filter(sub => {
-            webpush.sendNotification(sub, JSON.stringify({
-              title: `New message from ${socket.username}`,
+      // Push notifications to other members only
+      for (const user of roomDoc.members) {
+        if (user === sender) continue; // 🚫 Skip sender
+
+        const subs = userSubscriptions[user];
+        if (!subs) continue;
+
+        // Send push notifications safely
+        const validSubs = [];
+        for (const sub of subs) {
+          try {
+            await webpush.sendNotification(sub, JSON.stringify({
+              title: `💬 New message from ${sender}`,
               body: msg,
               icon: '/icon.png'
-            }))
-            .catch(err => {
-              console.error('Push error:', err);
-              // Remove invalid subscription
-              return false; 
-            });
-            return true; // keep subscription if no error
-          })
+            }));
+            validSubs.push(sub);
+          } catch (err) {
+            console.warn(`Push failed for ${user}:`, err.statusCode);
+          }
         }
+
+        // Keep only valid subs
+        userSubscriptions[user] = validSubs;
       }
+
     } catch (err) {
-      console.log('message handler error:', err);
+      console.error('message handler error:', err);
     }
   });
+
 
   // Delete message
   socket.on('delete', async (data) => {
