@@ -126,10 +126,12 @@ socket.on('delete', (id) => {
 
 // ✅ Send message
 sendBtn.addEventListener('click', sendMessage);
+sendBtn.addEventListener('touchend', sendMessage);
 inputEl.addEventListener('keypress', e => { if (e.key === 'Enter') sendMessage(); });
 
 function sendMessage() {
   const msg = inputEl.value.trim();
+  console.log("✉️ Sending msg:", msg, "room:", currentRoom);
   if (!msg || !currentRoom) return;
 
   // temporary ID
@@ -155,42 +157,59 @@ addRoomIcon.addEventListener('click', () => {
   groupsEl.classList.toggle("down");
 });
 
+// ✅ Create/join new room
 function joinChat() {
   const roomName = newRoomInput.value.trim();
   if (!roomName) return;
+
   socket.emit('createRoom', roomName);
   currentRoom = roomName;
   localStorage.setItem('room', currentRoom);
   messagesEl.innerHTML = '';
   socket.emit('join', currentRoom);
+
   joinForm.classList.remove('show');
   groupsEl.classList.remove("down");
   newRoomInput.value = '';
 }
 joinRoomBtn.addEventListener('click', joinChat);
+joinRoomBtn.addEventListener('touchend', joinChat); // 👈 mobile tap support
 
-groupsEl.addEventListener("click", (e) => {
+// ✅ Reusable function for joining existing rooms
+function handleRoomJoin(e) {
   const li = e.target.closest("li");
   if (!li) return;
+
   currentRoom = li.dataset.room;
   console.log("Joining room:", currentRoom);
+
   localStorage.setItem('room', currentRoom);
   messagesEl.innerHTML = '';
   socket.emit('join', currentRoom);
+
   joinForm.classList.remove("show");
   groupsEl.classList.remove("down");
+
   if (window.innerWidth <= 530) {
     groupList.classList.remove("active");
     chatContainer.classList.add("active");
   }
-});
+}
 
-backBtn.addEventListener("click", () => {
+// ✅ Desktop + Mobile support
+groupsEl.addEventListener("click", handleRoomJoin);
+groupsEl.addEventListener("touchend", handleRoomJoin);
+
+// ✅ Back button (for mobile view toggle)
+function handleBack() {
   if (window.innerWidth <= 530) {
     chatContainer.classList.remove("active");
     groupList.classList.add("active");
   }
-});
+}
+backBtn.addEventListener("click", handleBack);
+backBtn.addEventListener("touchend", handleBack); // 👈 mobile support
+
 
 // ✅ Render groups with delete
 function renderGroups(groups) {
@@ -271,6 +290,15 @@ function renderMessage(data) {
         }
         
         // Optimistic removal
+        const el = document.getElementById(data.id);
+        if (el) el.remove();
+      });
+
+      
+      btn.addEventListener('touchend', () => {
+        if (!data.id.startsWith("temp-")) {
+          socket.emit('delete', { id: data.id });
+        }
         const el = document.getElementById(data.id);
         if (el) el.remove();
       });
