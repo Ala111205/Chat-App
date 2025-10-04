@@ -61,7 +61,7 @@ let userSubscriptions = {};
 
 // ✅ Preflight for /subscribe
 app.options('/subscribe', cors(corsOptions), (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigins);
+    res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
