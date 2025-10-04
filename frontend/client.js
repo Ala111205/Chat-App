@@ -349,24 +349,3 @@ function formatMessageTime(ts) {
 
   return date.toLocaleString();
 }
-
-// ✅ Notifications
-function showNotification(data) {
-  if (Notification.permission === "granted") {
-    const formattedTime = formatMessageTime(data.timestamp || data.time);
-    new Notification(`💬 New message from ${data.username}`, {
-      body: `${data.message}\n(${formattedTime})`,
-      icon: "/icon.png"
-    });
-  }
-}
-
-function sendPushNotification(data) {
-  if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      title: `💬 ${data.username} sent a message`,
-      body: data.message,
-      icon: "/icon.png"
-    });
-  }
-}
