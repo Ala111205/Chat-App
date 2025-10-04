@@ -31,7 +31,6 @@ const corsOptions = {
   allowedHeaders: ["Content-Type"]
 };
 
-app.use(cors(corsOptions))
 
 // ✅ Socket.io setup
 const { Server } = require('socket.io');
@@ -61,7 +60,7 @@ let userSubscriptions = {};
 
 
 // ✅ Preflight for /subscribe
-app.options('/subscribe', (req, res) => {
+app.options('/subscribe', cors(corsOptions), (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -70,7 +69,7 @@ app.options('/subscribe', (req, res) => {
 });
 
 // ✅ Subscribe endpoint with CORS
-app.post('/subscribe', (req, res) => {
+app.post('/subscribe', cors(corsOptions), (req, res) => {
   const origin = req.headers.origin;
     res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
