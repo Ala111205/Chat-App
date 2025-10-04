@@ -12,21 +12,33 @@ const STATIC_ASSETS = [
 
 self.addEventListener('install', event => {
   console.log('[SW] Installing...');
+
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
         console.log('[SW] Caching static assets...');
-        // Only add assets that exist
-        return Promise.all(
-          STATIC_ASSETS.map(asset => 
-            fetch(asset).then(resp => {
-              if (!resp.ok) throw new Error(`Failed to fetch ${asset}`);
-              return cache.put(asset, resp);
-            })
-          )
+
+        // Cache all static assets that exist
+        await Promise.all(
+          STATIC_ASSETS.map(async asset => {
+            try {
+              const response = await fetch(asset);
+              if (!response.ok) throw new Error(`Failed to fetch ${asset}`);
+              await cache.put(asset, response.clone());
+            } catch (err) {
+              console.warn(`[SW] Skipping ${asset}:`, err.message);
+            }
+          })
         );
-      })
+
+      } catch (err) {
+        console.error('[SW] Cache installation failed:', err);
+      }
+    })()
   );
+
+  // Take control of the page immediately after installation
   self.skipWaiting();
 });
 

@@ -28,16 +28,45 @@ let currentRoom = localStorage.getItem('room') || null;
 if (Notification.permission !== "granted") Notification.requestPermission();
 
 if ('serviceWorker' in navigator && 'PushManager' in window) {
-  navigator.serviceWorker.register('/sw.js')
-    .then(reg => {
-      console.log('Service Worker registered', reg);
-      if (Notification.permission === 'granted') subscribeUser();
-    })
-    .catch(err => console.error('Service Worker failed', err));
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      console.log('✅ Service Worker registered:', reg);
+
+      // Wait until the SW is ready
+      const swReg = await navigator.serviceWorker.ready;
+
+      // Force the new SW to take control immediately
+      if (swReg.waiting) {
+        swReg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+
+      // Only subscribe if notifications are granted
+      if (Notification.permission === 'granted') {
+        await subscribeUser();
+      }
+
+    } catch (err) {
+      console.error('❌ Service Worker registration failed:', err);
+    }
+  });
+
+  // Listen for messages from SW (optional, e.g., for update notifications)
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'SKIP_WAITING_COMPLETE') {
+      console.log('SW v2 has taken control');
+    }
+  });
 }
+
 
 async function subscribeUser() {
   const reg = await navigator.serviceWorker.ready;
+
+  // Unsubscribe old subscription if exists
+  const oldSub = await reg.pushManager.getSubscription();
+  if (oldSub) await oldSub.unsubscribe();
+
   const subscription = await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array('BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA')
