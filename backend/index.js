@@ -82,7 +82,7 @@ app.post('/subscribe', cors(corsOptions), (req, res) => {
   if (!userSubscriptions[username]) {
     userSubscriptions[username] = [];
   }
-  
+
   const exists = userSubscriptions[username].some(sub => sub.endpoint === subscription.endpoint);
   if (!exists) {
     userSubscriptions[username].push(subscription);
@@ -200,17 +200,25 @@ io.on('connection', (socket) => {
       // Push notifications to room members (except sender)
       const roomDoc = await Room.findOne({ name: room });
       if (roomDoc && roomDoc.members && Array.isArray(roomDoc.members)) {
-        roomDoc.members.forEach(user => {
-          if (user !== socket.username && userSubscriptions[user]) {
-            userSubscriptions[user].forEach(sub => {
-              webpush.sendNotification(sub, JSON.stringify({
-                title: `New message from ${socket.username}`,
-                body: msg,
-                icon: '/icon.png'
-              })).catch(err => console.error('Push error:', err));
+        for (const user of roomDoc.members) {
+          if (user === socket.username) continue; // skip sender completely
+          if (!userSubscriptions[user]) continue;
+
+          // Loop over each subscription for that user
+          userSubscriptions[user] = userSubscriptions[user].filter(sub => {
+            webpush.sendNotification(sub, JSON.stringify({
+              title: `New message from ${socket.username}`,
+              body: msg,
+              icon: '/icon.png'
+            }))
+            .catch(err => {
+              console.error('Push error:', err);
+              // Remove invalid subscription
+              return false; 
             });
-          }
-        });
+            return true; // keep subscription if no error
+          })
+        }
       }
     } catch (err) {
       console.log('message handler error:', err);
