@@ -146,7 +146,7 @@ function sendMessage() {
   inputEl.value = '';
 
   // Send to server
-  socket.emit('message', { room: currentRoom, msg });
+  socket.emit('message', { room: currentRoom, msg, tempId });
 }
 
 // ✅ Join/create room

@@ -96,130 +96,173 @@ io.on('connection', (socket) => {
   // Initialize user
   socket.on('init', async (username) => {
     socket.username = username;
-    const userRooms = await Room.find({ members: username });
-    socket.emit('joinedGroups', userRooms.map(r => r.name));
+    try {
+      const userRooms = await Room.find({ members: username });
+      socket.emit('joinedGroups', userRooms.map(r => r.name));
+    } catch (err) {
+      console.error('init error:', err);
+    }
   });
 
   // Create room
   socket.on('createRoom', async (roomName) => {
     if (!roomName) return;
-    await Room.findOneAndUpdate(
-      { name: roomName },
-      { $addToSet: { members: socket.username } },
-      { upsert: true, new: true }
-    );
-    if (!activeRooms[roomName]) activeRooms[roomName] = [];
-    activeRooms[roomName].push(socket.id);
+    try {
+      await Room.findOneAndUpdate(
+        { name: roomName },
+        { $addToSet: { members: socket.username } },
+        { upsert: true, new: true }
+      );
 
-    const userRooms = await Room.find({ members: socket.username });
-    socket.emit('joinedGroups', userRooms.map(r => r.name));
+      if (!activeRooms[roomName]) activeRooms[roomName] = new Set();
+      activeRooms[roomName].add(socket.id);
+
+      const userRooms = await Room.find({ members: socket.username });
+      socket.emit('joinedGroups', userRooms.map(r => r.name));
+    } catch (err) {
+      console.error('createRoom error:', err);
+    }
   });
 
   // Join room
   socket.on('join', async (roomName) => {
     if (!roomName) return;
-    socket.room = roomName;
-    socket.join(roomName); // ✅ join socket.io room
+    try {
+      socket.room = roomName;
+      await socket.join(roomName); // ensure the socket joins the socket.io room
 
-    await Room.findOneAndUpdate(
-      { name: roomName },
-      { $addToSet: { members: socket.username } },
-      { upsert: true, new: true }
-    );
+      await Room.findOneAndUpdate(
+        { name: roomName },
+        { $addToSet: { members: socket.username } },
+        { upsert: true, new: true }
+      );
 
-    if (!activeRooms[roomName]) activeRooms[roomName] = [];
-    if (!activeRooms[roomName].includes(socket.id)) activeRooms[roomName].push(socket.id);
+      if (!activeRooms[roomName]) activeRooms[roomName] = new Set();
+      activeRooms[roomName].add(socket.id);
 
-    const history = await Message.find({ room: roomName }).sort({ createdAt: 1 });
-    socket.emit('history', history.map(msg => ({
-      id: msg._id.toString(),
-      username: msg.username,
-      message: msg.message,
-      timestamp: msg.createdAt.getTime()
-    })));
+      const history = await Message.find({ room: roomName }).sort({ createdAt: 1 });
+      socket.emit('history', history.map(msg => ({
+        id: msg._id.toString(),
+        username: msg.username,
+        message: msg.message,
+        timestamp: msg.createdAt.getTime()
+      })));
 
-    socket.to(roomName).emit('system', `${socket.username} joined the chat`);
+      socket.to(roomName).emit('system', `${socket.username} joined the chat`);
+    } catch (err) {
+      console.error('join error:', err);
+    }
   });
 
   // Chat message
   socket.on('message', async (data) => {
-    const msg = data.msg;
-    const room = data.room || socket.room;
-    const tempId = data.tempId;
-    if (!room || !msg) return;
+    try {
+      const msg = data && data.msg;
+      const room = (data && data.room) || socket.room;
+      const tempId = data && data.tempId;
 
-    // Ensure socket joined the room
-    socket.join(room);
+      if (!room || !msg) {
+        // ignore malformed message
+        return;
+      }
 
-    const newMsg = await Message.create({
-      room,
-      username: socket.username,
-      message: msg,
-      time: new Date()
-    });
+      // Make sure socket has joined the room on the server side
+      await socket.join(room);
+      socket.room = room;
 
-    const msgData = {
-      id: newMsg._id.toString(),
-      username: socket.username,
-      message: msg,
-      timestamp: newMsg.createdAt.getTime(),
-      tempId
-    };
-
-    // Broadcast in room
-    io.to(room).emit('chat', msgData);
-
-    // Push notifications
-    const roomDoc = await Room.findOne({ name: socket.room });
-    if (roomDoc) {
-      room.members.forEach(user => {
-        if (user !== socket.username && userSubscriptions[user]) {
-          userSubscriptions[user].forEach(sub => {
-            webpush.sendNotification(sub, JSON.stringify({
-              title: `New message from ${socket.username}`,
-              body: msg,
-              icon: '/icon.png'
-            })).catch(err => console.error('Push error:', err));
-          });
-        }
+      // Persist message
+      const newMsg = await Message.create({
+        room,
+        username: socket.username,
+        message: msg,
+        time: new Date()
       });
+
+      const msgData = {
+        id: newMsg._id.toString(),
+        username: socket.username,
+        message: msg,
+        timestamp: newMsg.createdAt.getTime(),
+        tempId: tempId || null
+      };
+
+      // Broadcast to everyone in the room
+      io.to(room).emit('chat', msgData);
+
+      // Push notifications to room members (except sender)
+      const roomDoc = await Room.findOne({ name: room });
+      if (roomDoc && roomDoc.members && Array.isArray(roomDoc.members)) {
+        roomDoc.members.forEach(user => {
+          if (user !== socket.username && userSubscriptions[user]) {
+            userSubscriptions[user].forEach(sub => {
+              webpush.sendNotification(sub, JSON.stringify({
+                title: `New message from ${socket.username}`,
+                body: msg,
+                icon: '/icon.png'
+              })).catch(err => console.error('Push error:', err));
+            });
+          }
+        });
+      }
+    } catch (err) {
+      console.error('message handler error:', err);
     }
   });
 
   // Delete message
   socket.on('delete', async (data) => {
-    const id = data.id;
-    if (!id) return;
+    try {
+      if (!data || !data.id) return;
+      const id = data.id;
 
-    const deleted = await Message.findByIdAndDelete(id);
-    if (!deleted) return;
+      // Delete from DB
+      const deleted = await Message.findByIdAndDelete(id);
+      if (!deleted) return;
 
-    // Use deleted.room from DB
-     io.in(deleted.room).fetchSockets().then(sockets => {
-      if (sockets.length > 0) {
-        io.to(deleted.room).emit('delete', deleted._id.toString());
+      // Broadcast delete to sockets that are actually in the room.
+      // If no sockets are in the room right now, no one will receive it (clients reloading should fetch history).
+      const roomName = deleted.room;
+      // fetchSockets returns sockets in that namespace/room; ensure compatibility with your server version
+      const sockets = await io.in(roomName).fetchSockets();
+      if (sockets && sockets.length > 0) {
+        io.to(roomName).emit('delete', id);
+      } else {
+        // no active sockets in room; still emit globally so clients that recently joined might pick it up
+        io.emit('delete', id);
       }
-    });
+    } catch (err) {
+      console.error('delete handler error:', err);
+    }
   });
 
   // Delete room
   socket.on('deleteGroup', async (roomName) => {
-    const room = await Room.findOne({ name: roomName });
-    if (!room) return;
+    try {
+      const room = await Room.findOne({ name: roomName });
+      if (!room) return;
 
-    delete activeRooms[roomName];
+      delete activeRooms[roomName];
 
-    await Room.deleteOne({ name: roomName });
-    await Message.deleteMany({ room: roomName });
+      await Room.deleteOne({ name: roomName });
+      await Message.deleteMany({ room: roomName });
 
-    io.emit('joinedGroups', await Room.find({}).then(r => r.map(r => r.name)));
+      io.emit('joinedGroups', await Room.find({}).then(r => r.map(r => r.name)));
+    } catch (err) {
+      console.error('deleteGroup error:', err);
+    }
   });
 
   // Disconnect
   socket.on('disconnect', () => {
-    if (!socket.room || !activeRooms[socket.room]) return;
-    activeRooms[socket.room] = activeRooms[socket.room].filter(id => id !== socket.id);
-    socket.to(socket.room).emit('system', `${socket.username} left the chat`);
+    try {
+      if (socket.room && activeRooms[socket.room]) {
+        activeRooms[socket.room].delete(socket.id);
+      }
+      if (socket.room) socket.to(socket.room).emit('system', `${socket.username} left the chat`);
+      console.log('Socket disconnected:', socket.id);
+    } catch (err) {
+      console.error('disconnect error:', err);
+    }
   });
 });
 
