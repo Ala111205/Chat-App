@@ -6,6 +6,7 @@ It enables users to create chat rooms, exchange instant messages, and receive **
 **Live Demo** 👉 https://chat-app-indol-gamma.vercel.app/
 
 **🚀 Features**
+
 **👤 User Authentication**
 
 Simple username-based login (no password required).
