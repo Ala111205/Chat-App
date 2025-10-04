@@ -1,7 +1,7 @@
 **🗨️ Chat App Messenger**
 
 A real-time full-stack chat application built using **HTML, CSS, JavaScript, Express.js, MongoDB,** and **WebSockets**.
-It enables users to create chat rooms, exchange instant messages, and receive push notifications even when the browser is closed — powered by Service Worker (sw.js) and Push API.
+It enables users to create chat rooms, exchange instant messages, and receive **push notifications** even when the browser is closed — powered by **Service Worker** (sw.js) and Push API.
 
 **Live Demo** 👉 https://chat-app-indol-gamma.vercel.app/
 
