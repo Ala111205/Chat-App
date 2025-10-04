@@ -100,7 +100,7 @@ io.on('connection', (socket) => {
       const userRooms = await Room.find({ members: username });
       socket.emit('joinedGroups', userRooms.map(r => r.name));
     } catch (err) {
-      console.error('init error:', err);
+      console.log('init error:', err);
     }
   });
 
@@ -120,7 +120,7 @@ io.on('connection', (socket) => {
       const userRooms = await Room.find({ members: socket.username });
       socket.emit('joinedGroups', userRooms.map(r => r.name));
     } catch (err) {
-      console.error('createRoom error:', err);
+      console.log('createRoom error:', err);
     }
   });
 
@@ -150,19 +150,23 @@ io.on('connection', (socket) => {
 
       socket.to(roomName).emit('system', `${socket.username} joined the chat`);
     } catch (err) {
-      console.error('join error:', err);
+      console.log('join error:', err);
     }
   });
 
   // Chat message
   socket.on('message', async (data) => {
     try {
+      console.log("🔹 Incoming message data:", data);
+
       const msg = data && data.msg;
       const room = (data && data.room) || socket.room;
       const tempId = data && data.tempId;
 
+      console.log("🔹 Parsed -> room:", room, "msg:", msg, "tempId:", tempId);
+
       if (!room || !msg) {
-        // ignore malformed message
+        console.log("⚠️ Missing room or msg, skipping");
         return;
       }
 
@@ -205,18 +209,24 @@ io.on('connection', (socket) => {
         });
       }
     } catch (err) {
-      console.error('message handler error:', err);
+      console.log('message handler error:', err);
     }
   });
 
   // Delete message
   socket.on('delete', async (data) => {
     try {
-      if (!data || !data.id) return;
+      console.log("🔹 Delete request:", data);
+
+      if (!data || !data.id){
+        console.log("⚠️ Delete request missing id");
+        return;
+      } 
       const id = data.id;
 
       // Delete from DB
       const deleted = await Message.findByIdAndDelete(id);
+      console.log("🔹 Deleted from DB:", deleted);
       if (!deleted) return;
 
       // Broadcast delete to sockets that are actually in the room.
@@ -230,8 +240,9 @@ io.on('connection', (socket) => {
         // no active sockets in room; still emit globally so clients that recently joined might pick it up
         io.emit('delete', id);
       }
+      console.log("✅ Broadcast delete to room:", deleted.room);
     } catch (err) {
-      console.error('delete handler error:', err);
+      console.log('delete handler error:', err);
     }
   });
 
@@ -248,7 +259,7 @@ io.on('connection', (socket) => {
 
       io.emit('joinedGroups', await Room.find({}).then(r => r.map(r => r.name)));
     } catch (err) {
-      console.error('deleteGroup error:', err);
+      console.log('deleteGroup error:', err);
     }
   });
 
@@ -261,7 +272,7 @@ io.on('connection', (socket) => {
       if (socket.room) socket.to(socket.room).emit('system', `${socket.username} left the chat`);
       console.log('Socket disconnected:', socket.id);
     } catch (err) {
-      console.error('disconnect error:', err);
+      console.log('disconnect error:', err);
     }
   });
 });
