@@ -63,23 +63,29 @@ if ('serviceWorker' in navigator && 'PushManager' in window) {
 async function subscribeUser() {
   const reg = await navigator.serviceWorker.ready;
 
-  // Unsubscribe old subscription if exists
-  const oldSub = await reg.pushManager.getSubscription();
-  if (oldSub) await oldSub.unsubscribe();
+  // Check existing subscription
+  let subscription = await reg.pushManager.getSubscription();
 
-  const subscription = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array('BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA')
-  });
+  // Only subscribe if missing
+  if (!subscription) {
+    subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(
+        'BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA'
+      )
+    });
 
-  await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, subscription }),
-    credentials: 'include'
-  });
+    await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, subscription }),
+      credentials: 'include'
+    });
 
-  console.log('Subscribed for push notifications');
+    console.log('✅ New subscription created and sent to server');
+  } else {
+    console.log('ℹ️ Existing subscription is valid, no need to re-subscribe');
+  }
 }
 
 function urlBase64ToUint8Array(base64String) {
