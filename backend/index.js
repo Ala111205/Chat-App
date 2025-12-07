@@ -11,7 +11,6 @@ const Room = require('./models/room');
 const app = express();
 const server = http.createServer(app);
 
-// ✅ Define allowed origins once
 const allowedOrigins = [
   'https://chat-app-indol-gamma.vercel.app',
   'http://localhost:3000',
@@ -28,7 +27,9 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
+  allowedHeaders: ["Content-Type", "Authorization"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 
@@ -36,6 +37,10 @@ const corsOptions = {
 const { Server } = require('socket.io');
 const io = new Server(server, {
   cors: corsOptions
+});
+
+app.get("/ping", (req, res) => {
+  res.status(200).send("pong");
 });
 
 // Middleware
@@ -59,7 +64,7 @@ webpush.setVapidDetails(
 let userSubscriptions = {};
 
 
-// ✅ Preflight for /subscribe
+// Preflight for /subscribe
 app.options('/subscribe', cors(corsOptions), (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -68,7 +73,7 @@ app.options('/subscribe', cors(corsOptions), (req, res) => {
     return res.sendStatus(204);
 });
 
-// ✅ Subscribe endpoint with CORS
+// Subscribe endpoint with CORS
 app.post('/subscribe', cors(corsOptions), (req, res) => {
   const origin = req.headers.origin;
     res.setHeader('Access-Control-Allow-Origin', 'https://chat-app-indol-gamma.vercel.app');
@@ -136,7 +141,7 @@ io.on('connection', (socket) => {
     if (!roomName) return;
     try {
       socket.room = roomName;
-      await socket.join(roomName); // ensure the socket joins the socket.io room
+      await socket.join(roomName);
 
       await Room.findOneAndUpdate(
         { name: roomName },
