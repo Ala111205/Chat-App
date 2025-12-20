@@ -27,20 +27,22 @@ let currentRoom = localStorage.getItem('room') || null;
 // ✅ Notification setup
 if (Notification.permission !== "granted") Notification.requestPermission();
 
+const VAPID_PUBLIC_KEY = 'BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA';
+
 async function registerSWAndPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-  const reg = await navigator.serviceWorker.register('/sw.js');
+  const swReg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
 
-  if (document.visibilityState !== 'visible') return;
-
-  if (Notification.permission === 'granted') {
-    await subscribeUser(reg);
-  } else {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') await subscribeUser(reg);
+  if (Notification.permission === 'granted' || await requestNotificationPermission()) {
+    await subscribeUser(swReg);
   }
+}
+
+async function requestNotificationPermission() {
+  const permission = await Notification.requestPermission();
+  return permission === 'granted';
 }
 
 async function subscribeUser(swReg) {
@@ -48,24 +50,15 @@ async function subscribeUser(swReg) {
   if (!username) return;
 
   let subscription = await swReg.pushManager.getSubscription();
-
-  const newSub = await swReg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(window.VAPID_PUBLIC_KEY)
-  });
-
-  const changed =
-    !subscription ||
-    JSON.stringify(subscription) !== JSON.stringify(newSub);
-
-  subscription = newSub;
-
-  if (!changed) {
-    console.log('ℹ️ Subscription unchanged');
-    return;
+  if (!subscription) {
+    subscription = await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    console.log('✅ New subscription created');
+  } else {
+    console.log('ℹ️ Existing subscription reused');
   }
-
-  console.log('✅ Subscription updated');
 
   await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
     method: 'POST',
