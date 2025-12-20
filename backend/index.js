@@ -159,6 +159,8 @@ io.on('connection', socket => {
         try {
           console.log('📨 Sending push to:', sub.endpoint);
 
+          console.log('[PUSH]', member, sub.endpoint.slice(0, 40));
+
           await webpush.sendNotification(
             {
               endpoint: sub.endpoint,
