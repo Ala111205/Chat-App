@@ -1,3 +1,4 @@
+// Versioned cache
 const CACHE_NAME = 'chat-app-cache-v2';
 const STATIC_ASSETS = [
   '/index.html',
@@ -7,36 +8,52 @@ const STATIC_ASSETS = [
   '/icon.png'
 ];
 
-// Install
+// Install event
 self.addEventListener('install', event => {
   console.log('[SW] Installing...');
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache =>
-      cache.addAll(STATIC_ASSETS)
-    )
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      await Promise.all(
+        STATIC_ASSETS.map(async asset => {
+          try {
+            const res = await fetch(asset);
+            if (!res.ok) throw new Error(`Failed to fetch ${asset}`);
+            await cache.put(asset, res.clone());
+          } catch (err) {
+            console.warn(`[SW] Skipping ${asset}: ${err.message}`);
+          }
+        })
+      );
+    })()
   );
-  self.skipWaiting();
+  self.skipWaiting(); // Activate immediately
 });
 
-// Activate - cleanup old caches
+// Activate event - cleanup old caches
 self.addEventListener('activate', event => {
   console.log('[SW] Activating...');
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
     )
   );
   self.clients.claim();
 });
 
-// Fetch - cache-first
+// Fetch event - cache-first
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then(resp => resp || fetch(event.request))
+    caches.match(event.request).then(resp => resp || fetch(event.request).catch(() => {
+      if (event.request.url.endsWith('/icon.png')) return caches.match('/icon.png');
+      return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+    }))
   );
 });
 
-// Push notification
+// =========================
+// Push event - show notification
+// =========================
 self.addEventListener('push', event => {
   let payload = {
     title: 'New Message',
@@ -73,7 +90,6 @@ self.addEventListener('push', event => {
   );
 });
 
-// Notification click
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const url = event.notification.data?.url || '/';
@@ -87,7 +103,7 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
-// Skip waiting
+// Listen for skip waiting messages
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });

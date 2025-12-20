@@ -28,16 +28,20 @@ let currentRoom = localStorage.getItem('room') || null;
 async function registerSWAndPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
+  // 1️⃣ Register SW
   const swReg = await navigator.serviceWorker.register('/sw.js');
   const readySW = await navigator.serviceWorker.ready;
 
+  // 2️⃣ Request permission
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return;
 
+  // 3️⃣ Get VAPID key from backend
   const resp = await fetch('https://chat-app-kyp7.onrender.com/vapidPublicKey');
   const { key: vapidKey } = await resp.json();
   if (!vapidKey) return console.error('❌ VAPID key missing');
 
+  // 4️⃣ Get or create subscription
   let subscription = await readySW.pushManager.getSubscription();
   if (!subscription) {
     subscription = await readySW.pushManager.subscribe({
@@ -49,11 +53,15 @@ async function registerSWAndPush() {
     console.log('ℹ️ Existing subscription reused');
   }
 
+  // 5️⃣ Send subscription to backend
   await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ username, subscription })
+    body: JSON.stringify({
+      username: localStorage.getItem('username'),
+      subscription
+    })
   });
   console.log('✅ Subscription sent to backend');
 }
