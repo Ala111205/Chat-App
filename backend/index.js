@@ -71,16 +71,18 @@ webpush.setVapidDetails(
 app.post('/subscribe', async (req, res) => {
   const { username, subscription } = req.body;
 
-  if (!username || !subscription?.endpoint) {
+  if (!username || !subscription?.endpoint || !subscription?.keys) {
     return res.status(400).json({ error: 'Invalid subscription' });
   }
 
   await Subscription.findOneAndUpdate(
-    { username, endpoint: subscription.endpoint },
+    { endpoint: subscription.endpoint }, // ✅ SINGLE SOURCE OF TRUTH
     {
       username,
       endpoint: subscription.endpoint,
-      keys: subscription.keys
+      keys: subscription.keys,
+      invalid: false,
+      updatedAt: new Date()
     },
     { upsert: true }
   );
@@ -151,7 +153,12 @@ io.on('connection', socket => {
     for (const user of roomDoc.members) {
       if (user === socket.username) continue;
 
-      const subs = await Subscription.find({ username: user });
+      // ✅ Send only to valid subscriptions
+      const subs = await Subscription.find({
+        username: user,
+        invalid: { $ne: true }
+      });
+
       for (const sub of subs) {
         try {
           await webpush.sendNotification(
@@ -165,8 +172,16 @@ io.on('connection', socket => {
               icon: 'https://chat-app-kyp7.onrender.com/icon.png'
             })
           );
-        } catch {
-          await Subscription.deleteOne({ _id: sub._id });
+        } catch (err) {
+          // ✅ Correct error handling
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            await Subscription.updateOne(
+              { _id: sub._id },
+              { $set: { invalid: true } }
+            );
+          } else {
+            console.error('❌ Push error:', err.statusCode);
+          }
         }
       }
     }
