@@ -224,6 +224,10 @@ io.on('connection', (socket) => {
             }));
             validSubs.push(sub);
           } catch (err) {
+            console.log('❌ PUSH FAILED');
+            console.log('Status:', err.statusCode);
+            console.log('Body:', err.body);
+            console.log('Endpoint:', sub.endpoint);
             console.warn(`Push failed for ${user}:`, err.statusCode);
           }
         }
