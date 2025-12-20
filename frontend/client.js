@@ -354,3 +354,9 @@ function formatMessageTime(ts) {
 
   return date.toLocaleString();
 }
+
+setInterval(() => {
+  fetch('https://chat-app-kyp7.onrender.com/ping')
+    .then(() => console.log('ping ok'))
+    .catch(() => console.log('ping failed'));
+}, 240000); // 4 minutes
