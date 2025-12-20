@@ -148,9 +148,9 @@ socket.on("disconnect", (reason) => {
 });
 
 // ✅ Listen for delete events
-socket.on('delete', (id) => {
-  const msgEl = document.getElementById(id);
-  if (msgEl) msgEl.remove();
+socket.on('messageDeleted', (id) => {
+  const el = document.getElementById(id);
+  if (el) el.remove();
 });
 
 
@@ -244,6 +244,7 @@ backBtn.addEventListener("touchend", handleBack); // 👈 mobile support
 // ✅ Render groups with delete
 function renderGroups(groups) {
   groupsEl.innerHTML = '';
+
   groups.forEach(group => {
     const li = document.createElement('li');
     li.dataset.room = group;
@@ -252,32 +253,17 @@ function renderGroups(groups) {
     const delBtn = document.createElement('button');
     delBtn.textContent = 'Delete';
     delBtn.className = 'delete-group-btn';
-    delBtn.style.display = 'none';
     li.appendChild(delBtn);
 
-    li.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      delBtn.style.display = 'inline-block';
+    attachLongPress(li, () => {
       delBtn.classList.add('show');
     });
 
-    let pressTimer;
-    li.addEventListener('touchstart', () => {
-      pressTimer = setTimeout(() => {
-        delBtn.style.display = 'inline-block';
-        delBtn.classList.add('show');
-      }, 600);
+    delBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      socket.emit('deleteGroup', group);
+      li.remove(); // optimistic
     });
-    li.addEventListener('touchend', () => clearTimeout(pressTimer));
-
-    document.addEventListener('click', e => {
-      if (!li.contains(e.target)) {
-        delBtn.classList.remove('show');
-        delBtn.style.display = 'none';
-      }
-    });
-
-    delBtn.addEventListener('click', () => socket.emit('deleteGroup', group));
 
     groupsEl.appendChild(li);
   });
@@ -300,37 +286,24 @@ function renderMessage(data) {
                      </div>`;
 
     if (data.username === username) {
-      const message = div.querySelector(".messages");
+      const messageBox = div.querySelector(".messages");
+
       const btn = document.createElement('button');
       btn.className = 'delete-btn';
       btn.textContent = 'Delete';
-      message.appendChild(btn);
+      messageBox.appendChild(btn);
 
-      div.addEventListener('contextmenu', e => { e.preventDefault(); btn.classList.add('show'); });
-      document.addEventListener('click', e => { if (!div.contains(e.target)) btn.classList.remove('show'); });
-
-      let pressTimer;
-      div.addEventListener('touchstart', () => { pressTimer = setTimeout(() => btn.classList.add('show'), 600); });
-      div.addEventListener('touchend', () => clearTimeout(pressTimer));
-
-      btn.addEventListener('click', () => {
-        // Only delete messages that exist in DB
-        if (!data.id.startsWith("temp-")) {
-          socket.emit('delete', { id: data.id });
-        }
-        
-        // Optimistic removal
-        const el = document.getElementById(data.id);
-        if (el) el.remove();
+      attachLongPress(div, () => {
+        btn.classList.add('show');
       });
 
-      
-      btn.addEventListener('touchend', () => {
+      btn.addEventListener('click', () => {
         if (!data.id.startsWith("temp-")) {
-          socket.emit('delete', { id: data.id });
+          socket.emit('deleteMessage', {
+            id: data.id,
+            room: currentRoom
+          });
         }
-        const el = document.getElementById(data.id);
-        if (el) el.remove();
       });
     }
   }
@@ -356,3 +329,38 @@ setInterval(() => {
     .then(() => console.log('ping ok'))
     .catch(() => console.log('ping failed'));
 }, 240000); // 4 minutes
+
+function attachLongPress(element, onLongPress) {
+  let timer;
+
+  // Mobile
+  element.addEventListener('touchstart', () => {
+    timer = setTimeout(onLongPress, 600);
+  });
+
+  element.addEventListener('touchend', () => {
+    clearTimeout(timer);
+  });
+
+  element.addEventListener('touchmove', () => {
+    clearTimeout(timer);
+  });
+
+  // Desktop (right click)
+  element.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    onLongPress();
+  });
+}
+
+document.addEventListener('click', e => {
+  document.querySelectorAll('.delete-btn.show').forEach(btn => {
+    if (!btn.contains(e.target)) btn.classList.remove('show');
+  });
+});
+
+document.addEventListener('click', e => {
+  document.querySelectorAll('.delete-group-btn.show').forEach(btn => {
+    if (!btn.contains(e.target)) btn.classList.remove('show');
+  });
+});
