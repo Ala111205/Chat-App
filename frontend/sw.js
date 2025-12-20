@@ -86,7 +86,6 @@ self.addEventListener('push', event => {
     }
   } catch (err) {
     console.warn('[SW v3] Malformed push payload:', err);
-    // fallback safely to defaults
   }
 
   event.waitUntil(
