@@ -64,60 +64,6 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY
 );
 
-// username → subscriptions[]
-const userSubscriptions = Object.create(null);
-
-/* =========================
-   SUBSCRIBE
-========================= */
-
-socket.on('message', async ({ msg, room, tempId }) => {
-  if (!msg || !room) return;
-
-  // Save message to DB
-  const saved = await Message.create({
-    room,
-    username: socket.username,
-    message: msg
-  });
-
-  // Broadcast chat to all clients in the room
-  io.to(room).emit('chat', {
-    id: saved._id.toString(),
-    username: socket.username,
-    message: msg,
-    timestamp: saved.createdAt.getTime(),
-    tempId
-  });
-
-  // Push notifications
-  const roomDoc = await Room.findOne({ name: room });
-  if (!roomDoc) return;
-
-  for (const user of roomDoc.members) {
-    if (user === socket.username) continue; // Skip sender
-
-    // Fetch subscriptions from DB
-    const subs = await Subscription.find({ username: user });
-    if (!subs || subs.length === 0) continue;
-
-    for (const sub of subs) {
-      try {
-        await webpush.sendNotification(sub, JSON.stringify({
-          title: `💬 New message from ${socket.username}`,
-          body: msg,
-          icon: 'https://chat-app-kyp7.onrender.com/icon.png'
-        }));
-      } catch (err) {
-        console.error(`❌ Push failed for ${user}:`, err.statusCode);
-
-        // Remove invalid subscriptions
-        await Subscription.deleteOne({ _id: sub._id });
-      }
-    }
-  }
-});
-
 /* =========================
    SOCKET.IO
 ========================= */
@@ -154,6 +100,51 @@ io.on('connection', socket => {
       message: m.message,
       timestamp: m.createdAt.getTime()
     })));
+  });
+
+  // ✅ SINGLE SOURCE OF TRUTH
+  socket.on('message', async ({ msg, room, tempId }) => {
+    if (!msg || !room || !socket.username) return;
+
+    const saved = await Message.create({
+      room,
+      username: socket.username,
+      message: msg
+    });
+
+    io.to(room).emit('chat', {
+      id: saved._id.toString(),
+      username: socket.username,
+      message: msg,
+      timestamp: saved.createdAt.getTime(),
+      tempId
+    });
+
+    const roomDoc = await Room.findOne({ name: room });
+    if (!roomDoc) return;
+
+    for (const user of roomDoc.members) {
+      if (user === socket.username) continue;
+
+      const subs = await Subscription.find({ username: user });
+      for (const sub of subs) {
+        try {
+          await webpush.sendNotification(
+            {
+              endpoint: sub.endpoint,
+              keys: sub.keys
+            },
+            JSON.stringify({
+              title: `💬 New message from${socket.username}`,
+              body: msg,
+              icon: 'https://chat-app-kyp7.onrender.com/icon.png'
+            })
+          );
+        } catch {
+          await Subscription.deleteOne({ _id: sub._id });
+        }
+      }
+    }
   });
 
   socket.on('deleteMessage', async ({ id, username }) => {
