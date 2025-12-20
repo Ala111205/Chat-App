@@ -1,5 +1,5 @@
 // Versioned cache
-const CACHE_NAME = 'chat-app-cache-v2';
+const CACHE_NAME = 'chat-app-cache-v3';
 const STATIC_ASSETS = [
   '/index.html',
   '/chat.html',
