@@ -205,6 +205,10 @@ io.on('connection', socket => {
   });
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 /* =========================
    START
 ========================= */
