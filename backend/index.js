@@ -156,51 +156,6 @@ io.on('connection', socket => {
     })));
   });
 
-  // ✅ SINGLE SOURCE OF TRUTH
-  socket.on('message', async ({ msg, room, tempId }) => {
-    if (!msg || !room || !socket.username) return;
-
-    const saved = await Message.create({
-      room,
-      username: socket.username,
-      message: msg
-    });
-
-    io.to(room).emit('chat', {
-      id: saved._id.toString(),
-      username: socket.username,
-      message: msg,
-      timestamp: saved.createdAt.getTime(),
-      tempId
-    });
-
-    const roomDoc = await Room.findOne({ name: room });
-    if (!roomDoc) return;
-
-    for (const user of roomDoc.members) {
-      if (user === socket.username) continue;
-
-      const subs = await Subscription.find({ username: user });
-      for (const sub of subs) {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: sub.keys
-            },
-            JSON.stringify({
-              title: `💬 New message from${socket.username}`,
-              body: msg,
-              icon: 'https://chat-app-kyp7.onrender.com/icon.png'
-            })
-          );
-        } catch {
-          await Subscription.deleteOne({ _id: sub._id });
-        }
-      }
-    }
-  });
-
   socket.on('deleteMessage', async ({ id, username }) => {
     const msg = await Message.findOne({ _id: id, username });
     if (!msg) return;
