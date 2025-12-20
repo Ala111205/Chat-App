@@ -6,6 +6,7 @@ const cors = require('cors');
 const webpush = require('web-push');
 const { Server } = require('socket.io');
 
+const Subscription = require('./models/subscription');
 const Message = require('./models/message');
 const Room = require('./models/room');
 
@@ -70,26 +71,51 @@ const userSubscriptions = Object.create(null);
    SUBSCRIBE
 ========================= */
 
-app.post('/subscribe', (req, res) => {
-  const { username, subscription } = req.body;
+socket.on('message', async ({ msg, room, tempId }) => {
+  if (!msg || !room) return;
 
-  if (!username || !subscription) {
-    return res.status(400).json({ error: 'Invalid payload' });
+  // Save message to DB
+  const saved = await Message.create({
+    room,
+    username: socket.username,
+    message: msg
+  });
+
+  // Broadcast chat to all clients in the room
+  io.to(room).emit('chat', {
+    id: saved._id.toString(),
+    username: socket.username,
+    message: msg,
+    timestamp: saved.createdAt.getTime(),
+    tempId
+  });
+
+  // Push notifications
+  const roomDoc = await Room.findOne({ name: room });
+  if (!roomDoc) return;
+
+  for (const user of roomDoc.members) {
+    if (user === socket.username) continue; // Skip sender
+
+    // Fetch subscriptions from DB
+    const subs = await Subscription.find({ username: user });
+    if (!subs || subs.length === 0) continue;
+
+    for (const sub of subs) {
+      try {
+        await webpush.sendNotification(sub, JSON.stringify({
+          title: `💬 New message from ${socket.username}`,
+          body: msg,
+          icon: 'https://chat-app-kyp7.onrender.com/icon.png'
+        }));
+      } catch (err) {
+        console.error(`❌ Push failed for ${user}:`, err.statusCode);
+
+        // Remove invalid subscriptions
+        await Subscription.deleteOne({ _id: sub._id });
+      }
+    }
   }
-
-  if (!userSubscriptions[username]) {
-    userSubscriptions[username] = [];
-  }
-
-  const exists = userSubscriptions[username]
-    .some(sub => sub.endpoint === subscription.endpoint);
-
-  if (!exists) {
-    userSubscriptions[username].push(subscription);
-    console.log(`✅ Subscription stored for ${username}`);
-  }
-
-  res.status(201).json({ ok: true });
 });
 
 /* =========================
@@ -151,12 +177,14 @@ io.on('connection', socket => {
   socket.on('message', async ({ msg, room, tempId }) => {
     if (!msg || !room) return;
 
+    // Save message to DB
     const saved = await Message.create({
       room,
       username: socket.username,
       message: msg
     });
 
+    // Broadcast chat to all clients in the room
     io.to(room).emit('chat', {
       id: saved._id.toString(),
       username: socket.username,
@@ -165,42 +193,42 @@ io.on('connection', socket => {
       tempId
     });
 
+    // Push notifications
     const roomDoc = await Room.findOne({ name: room });
     if (!roomDoc) return;
 
     for (const user of roomDoc.members) {
-      if (user === socket.username) continue;
+      if (user === socket.username) continue; // Skip sender
 
-      const subs = userSubscriptions[user];
-      if (!subs) continue;
-
-      const valid = [];
+      // Fetch subscriptions from DB
+      const subs = await Subscription.find({ username: user });
+      if (!subs || subs.length === 0) continue;
 
       for (const sub of subs) {
         try {
-          await webpush.sendNotification(
-            sub,
-            JSON.stringify({
-              title: `💬 ${socket.username}`,
-              body: msg,
-              icon: 'https://chat-app-kyp7.onrender.com/icon.png'
-            })
-          );
-          valid.push(sub);
+          await webpush.sendNotification(sub, JSON.stringify({
+            title: `💬 New message from ${socket.username}`,
+            body: msg,
+            icon: 'https://chat-app-kyp7.onrender.com/icon.png'
+          }));
         } catch (err) {
-          console.error('❌ PUSH FAILED', err.statusCode);
+          console.error(`❌ Push failed for ${user}:`, err.statusCode);
+
+          // Remove invalid subscriptions
+          await Subscription.deleteOne({ _id: sub._id });
         }
       }
-
-      userSubscriptions[user] = valid;
     }
   });
+  socket.on('deleteMessage', async ({ id, username }) => {
+    if (!id || !username) return;
 
-  socket.on('delete', async ({ id }) => {
-    if (!id) return;
+    const msg = await Message.findOne({ _id: id, username });
+    if (!msg) return; 
 
-    const deleted = await Message.findByIdAndDelete(id);
-    if (deleted) io.to(deleted.room).emit('delete', id);
+    await Message.deleteOne({ _id: id });
+
+    io.to(msg.room).emit('messageDeleted', id);
   });
 
   socket.on('deleteGroup', async roomName => {

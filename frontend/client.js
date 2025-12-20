@@ -153,7 +153,6 @@ socket.on('messageDeleted', (id) => {
   if (el) el.remove();
 });
 
-
 // ✅ Send message
 sendBtn.addEventListener('click', sendMessage);
 sendBtn.addEventListener('touchend', sendMessage);
