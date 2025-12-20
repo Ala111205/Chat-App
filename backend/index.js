@@ -127,8 +127,6 @@ const io = new Server(server, {
   transports: ['websocket', 'polling'],
 });
 
-const activeRooms = {};
-
 io.on('connection', socket => {
   console.log('🔌 Socket connected:', socket.id);
 
@@ -138,25 +136,9 @@ io.on('connection', socket => {
     socket.emit('joinedGroups', rooms.map(r => r.name));
   });
 
-  socket.on('createRoom', async roomName => {
-    if (!roomName) return;
-
-    await Room.findOneAndUpdate(
-      { name: roomName },
-      { $addToSet: { members: socket.username } },
-      { upsert: true }
-    );
-
-    socket.emit(
-      'joinedGroups',
-      (await Room.find({ members: socket.username })).map(r => r.name)
-    );
-  });
-
   socket.on('join', async roomName => {
     if (!roomName) return;
 
-    socket.room = roomName;
     await socket.join(roomName);
 
     await Room.findOneAndUpdate(
@@ -174,17 +156,16 @@ io.on('connection', socket => {
     })));
   });
 
+  // ✅ SINGLE SOURCE OF TRUTH
   socket.on('message', async ({ msg, room, tempId }) => {
-    if (!msg || !room) return;
+    if (!msg || !room || !socket.username) return;
 
-    // Save message to DB
     const saved = await Message.create({
       room,
       username: socket.username,
       message: msg
     });
 
-    // Broadcast chat to all clients in the room
     io.to(room).emit('chat', {
       id: saved._id.toString(),
       username: socket.username,
@@ -193,41 +174,38 @@ io.on('connection', socket => {
       tempId
     });
 
-    // Push notifications
     const roomDoc = await Room.findOne({ name: room });
     if (!roomDoc) return;
 
     for (const user of roomDoc.members) {
-      if (user === socket.username) continue; // Skip sender
+      if (user === socket.username) continue;
 
-      // Fetch subscriptions from DB
       const subs = await Subscription.find({ username: user });
-      if (!subs || subs.length === 0) continue;
-
       for (const sub of subs) {
         try {
-          await webpush.sendNotification(sub, JSON.stringify({
-            title: `💬 New message from ${socket.username}`,
-            body: msg,
-            icon: 'https://chat-app-kyp7.onrender.com/icon.png'
-          }));
-        } catch (err) {
-          console.error(`❌ Push failed for ${user}:`, err.statusCode);
-
-          // Remove invalid subscriptions
+          await webpush.sendNotification(
+            {
+              endpoint: sub.endpoint,
+              keys: sub.keys
+            },
+            JSON.stringify({
+              title: `💬 New message from${socket.username}`,
+              body: msg,
+              icon: 'https://chat-app-kyp7.onrender.com/icon.png'
+            })
+          );
+        } catch {
           await Subscription.deleteOne({ _id: sub._id });
         }
       }
     }
   });
-  socket.on('deleteMessage', async ({ id, username }) => {
-    if (!id || !username) return;
 
+  socket.on('deleteMessage', async ({ id, username }) => {
     const msg = await Message.findOne({ _id: id, username });
-    if (!msg) return; 
+    if (!msg) return;
 
     await Message.deleteOne({ _id: id });
-
     io.to(msg.room).emit('messageDeleted', id);
   });
 
@@ -237,8 +215,8 @@ io.on('connection', socket => {
     io.emit('joinedGroups', (await Room.find({})).map(r => r.name));
   });
 
-  socket.on('disconnect', reason => {
-    console.log('🔌 Socket disconnected:', reason);
+  socket.on('disconnect', () => {
+    console.log('🔌 Disconnected:', socket.id);
   });
 });
 
