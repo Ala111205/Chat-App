@@ -51,7 +51,9 @@ self.addEventListener('fetch', event => {
   );
 });
 
+// =========================
 // Push event - show notification
+// =========================
 self.addEventListener('push', event => {
   let payload = {
     title: 'New Message',
@@ -68,12 +70,13 @@ self.addEventListener('push', event => {
         title: data.title || payload.title,
         body: data.body || payload.body,
         icon: data.icon || payload.icon,
-        badge: payload.badge,
-        url: data.url || '/'
+        badge: data.badge || payload.badge,
+        url: data.url || payload.url
       };
     }
   } catch (e) {
-    // malformed payload — fallback safely
+    console.warn('⚠️ Malformed push payload', e);
+    // fallback safely to defaults
   }
 
   event.waitUntil(
@@ -81,24 +84,30 @@ self.addEventListener('push', event => {
       body: payload.body,
       icon: payload.icon,
       badge: payload.badge,
-      tag: 'chat-message',
-      data: { url: payload.url }
+      data: { url: payload.url },
+      tag: 'chat-message', // optional: prevents duplicates
+      renotify: true // optional: show new notification even if tag matches
     })
   );
 });
 
-// Notification click - focus or open
+// =========================
+// Notification click - open app
+// =========================
 self.addEventListener('notificationclick', event => {
   event.notification.close();
+  const url = event.notification.data?.url || '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      // Focus already open window if exists
       for (const client of clientList) {
-        if (client.url.includes(event.notification.data.url)) {
+        if (client.url === url && 'focus' in client) {
           return client.focus();
         }
       }
-      return clients.openWindow(event.notification.data.url);
+      // Otherwise, open new window/tab
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });

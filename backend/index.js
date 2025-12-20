@@ -64,6 +64,10 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY
 );
 
+app.get('/vapidPublicKey', (req, res) => {
+  res.json({ key: process.env.VAPID_PUBLIC_KEY });
+});
+
 /* =========================
    SUBSCRIBE
 ========================= */
@@ -76,7 +80,7 @@ app.post('/subscribe', async (req, res) => {
   }
 
   await Subscription.findOneAndUpdate(
-    { endpoint: subscription.endpoint }, // ✅ SINGLE SOURCE OF TRUTH
+    { endpoint: subscription.endpoint },
     {
       username,
       endpoint: subscription.endpoint,
@@ -159,32 +163,27 @@ io.on('connection', socket => {
         invalid: { $ne: true }
       });
 
-      for (const sub of subs) {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: sub.keys
-            },
-            JSON.stringify({
-              title: `💬 New message from ${socket.username}`,
-              body: msg,
-              icon: 'https://chat-app-kyp7.onrender.com/icon.png'
-            })
-          );
-        } catch (err) {
-          // ✅ Correct error handling
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            await Subscription.updateOne(
-              { _id: sub._id },
-              { $set: { invalid: true } }
+      for (const user of roomDoc.members) {
+        if (user === socket.username) continue; // skip sender
+
+        const subs = await Subscription.find({ username: user, invalid: false });
+        for (const sub of subs) {
+          try {
+            await webpush.sendNotification(
+              { endpoint: sub.endpoint, keys: sub.keys },
+              JSON.stringify({
+                title: `💬 New message from ${socket.username}`,
+                body: msg,
+                icon: 'https://chat-app-kyp7.onrender.com/icon.png'
+              })
             );
-          } else {
-            console.error('❌ Push error:', err.statusCode);
+          } catch (err) {
+            console.error(`❌ Push failed for ${user}:`, err.statusCode);
+            await Subscription.deleteOne({ _id: sub._id });
           }
         }
       }
-    }
+          }
   });
 
   socket.on('deleteMessage', async ({ id, username }) => {
