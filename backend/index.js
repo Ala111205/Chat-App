@@ -74,8 +74,9 @@ app.get('/vapidPublicKey', (req, res) => {
 
 app.post('/subscribe', async (req, res) => {
   const { username, subscription } = req.body;
-  if (!username || !subscription?.endpoint || !subscription?.keys)
+  if (!username || !subscription?.endpoint || !subscription?.keys) {
     return res.status(400).json({ error: 'Invalid subscription' });
+  }
 
   await Subscription.findOneAndUpdate(
     { endpoint: subscription.endpoint },
