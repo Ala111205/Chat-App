@@ -65,6 +65,31 @@ webpush.setVapidDetails(
 );
 
 /* =========================
+   SUBSCRIBE
+========================= */
+
+app.post('/subscribe', async (req, res) => {
+  const { username, subscription } = req.body;
+
+  if (!username || !subscription?.endpoint) {
+    return res.status(400).json({ error: 'Invalid subscription' });
+  }
+
+  await Subscription.findOneAndUpdate(
+    { username, endpoint: subscription.endpoint },
+    {
+      username,
+      endpoint: subscription.endpoint,
+      keys: subscription.keys
+    },
+    { upsert: true }
+  );
+
+  res.status(201).json({ ok: true });
+});
+
+
+/* =========================
    SOCKET.IO
 ========================= */
 
@@ -135,7 +160,7 @@ io.on('connection', socket => {
               keys: sub.keys
             },
             JSON.stringify({
-              title: `💬 New message from${socket.username}`,
+              title: `💬 New message from ${socket.username}`,
               body: msg,
               icon: 'https://chat-app-kyp7.onrender.com/icon.png'
             })

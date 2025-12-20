@@ -30,55 +30,49 @@ if (Notification.permission !== "granted") Notification.requestPermission();
 async function registerSWAndPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-  try {
-    const reg = await navigator.serviceWorker.register('/sw.js');
-    console.log('✅ SW registered:', reg);
+  const reg = await navigator.serviceWorker.register('/sw.js');
+  await navigator.serviceWorker.ready;
 
-    const swReg = await navigator.serviceWorker.ready;
+  if (document.visibilityState !== 'visible') return;
 
-    // Force skip waiting if waiting SW exists
-    if (swReg.waiting) swReg.waiting.postMessage({ type: 'SKIP_WAITING' });
-
-    // Subscribe if notifications are granted
-    if (Notification.permission === 'granted') {
-      await subscribeUser(swReg);
-    } else if (Notification.permission !== 'denied') {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') await subscribeUser(swReg);
-    }
-
-  } catch (err) {
-    console.error('❌ SW registration failed:', err);
+  if (Notification.permission === 'granted') {
+    await subscribeUser(reg);
+  } else {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') await subscribeUser(reg);
   }
 }
 
 async function subscribeUser(swReg) {
-  try {
-    let subscription = await swReg.pushManager.getSubscription();
+  const username = localStorage.getItem('username');
+  if (!username) return;
 
-    if (!subscription) {
-      subscription = await swReg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array('BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA')
-      });
-      console.log('✅ New subscription created');
-    } else {
-      console.log('ℹ️ Existing subscription is valid');
-    }
+  let subscription = await swReg.pushManager.getSubscription();
 
-    // Send subscription to backend
-    const resp = await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: localStorage.getItem('username'), subscription }),
-      credentials: 'include'
-    });
+  const newSub = await swReg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(window.VAPID_PUBLIC_KEY)
+  });
 
-    if (!resp.ok) console.warn('⚠️ Subscription POST failed:', resp.status);
+  const changed =
+    !subscription ||
+    JSON.stringify(subscription) !== JSON.stringify(newSub);
 
-  } catch (err) {
-    console.error('❌ Subscription failed:', err);
+  subscription = newSub;
+
+  if (!changed) {
+    console.log('ℹ️ Subscription unchanged');
+    return;
   }
+
+  console.log('✅ Subscription updated');
+
+  await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username, subscription })
+  });
 }
 
 function urlBase64ToUint8Array(base64) {

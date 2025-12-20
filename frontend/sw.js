@@ -53,21 +53,52 @@ self.addEventListener('fetch', event => {
 
 // Push event - show notification
 self.addEventListener('push', event => {
-  let data = { title: 'New Message', body: 'You have a new chat message.', icon: new URL('/icon.png', self.location.origin).href };
-  if (event.data) data = event.data.json();
+  let payload = {
+    title: 'New Message',
+    body: 'You have a new chat message.',
+    icon: '/icon.png',
+    badge: '/icon.png',
+    url: '/'
+  };
+
+  try {
+    if (event.data) {
+      const data = event.data.json();
+      payload = {
+        title: data.title || payload.title,
+        body: data.body || payload.body,
+        icon: data.icon || payload.icon,
+        badge: payload.badge,
+        url: data.url || '/'
+      };
+    }
+  } catch (e) {
+    // malformed payload — fallback safely
+  }
 
   event.waitUntil(
-    self.registration.showNotification(data.title, { body: data.body, icon: data.icon })
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: payload.icon,
+      badge: payload.badge,
+      tag: 'chat-message',
+      data: { url: payload.url }
+    })
   );
 });
 
 // Notification click - focus or open
 self.addEventListener('notificationclick', event => {
   event.notification.close();
+
   event.waitUntil(
-    clients.matchAll({ type: 'window' }).then(windows => {
-      if (windows.length) return windows[0].focus();
-      return clients.openWindow('/');
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      for (const client of clientList) {
+        if (client.url.includes(event.notification.data.url)) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow(event.notification.data.url);
     })
   );
 });
