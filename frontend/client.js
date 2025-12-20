@@ -25,66 +25,39 @@ const joinRoomBtn = document.getElementById('joinRoomBtn');
 let currentRoom = localStorage.getItem('room') || null;
 
 // ✅ Notification setup
-// if (Notification.permission !== "granted") Notification.requestPermission();
-
 async function registerSWAndPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-  // 1. Register service worker
   const swReg = await navigator.serviceWorker.register('/sw.js');
-  await navigator.serviceWorker.ready;
+  const readySW = await navigator.serviceWorker.ready;
 
-  // 2. Request notification permission
-  if (Notification.permission !== 'granted') {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return;
-  }
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return;
 
-  // 3. Subscribe user
-  await subscribeUser(swReg);
-}
-
-async function getVapidKey() {
   const resp = await fetch('https://chat-app-kyp7.onrender.com/vapidPublicKey');
-  const data = await resp.json();
-  return data.key;
-}
+  const { key: vapidKey } = await resp.json();
+  if (!vapidKey) return console.error('❌ VAPID key missing');
 
-async function subscribeUser(swReg) {
-  try {
-    const username = localStorage.getItem('username');
-    if (!username) return;
-
-    const vapidKey = await getVapidKey();
-    if (!vapidKey) return console.error('❌ VAPID key missing');
-
-    let subscription = await swReg.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await swReg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey)
-      });
-      console.log('✅ New subscription created');
-    } else {
-      console.log('ℹ️ Existing subscription reused');
-    }
-
-    // Only send to backend if endpoint changed
-    if (!subscription || subscription.endpoint !== subscription.endpoint) {
-      await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ username, subscription })
-      });
-      console.log('✅ Subscription sent to backend');
-    }
-  } catch (err) {
-    console.error('❌ Push subscription failed:', err);
+  let subscription = await readySW.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await readySW.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidKey)
+    });
+    console.log('✅ New subscription created');
+  } else {
+    console.log('ℹ️ Existing subscription reused');
   }
+
+  await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username, subscription })
+  });
+  console.log('✅ Subscription sent to backend');
 }
 
-// Utility
 function urlBase64ToUint8Array(base64) {
   const padding = '='.repeat((4 - base64.length % 4) % 4);
   const base64Str = (base64 + padding).replace(/\-/g, '+').replace(/_/g, '/');
@@ -92,7 +65,6 @@ function urlBase64ToUint8Array(base64) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
-// Init
 window.addEventListener('load', registerSWAndPush);
 
 

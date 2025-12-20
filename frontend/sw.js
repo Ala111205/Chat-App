@@ -1,4 +1,3 @@
-// Versioned cache
 const CACHE_NAME = 'chat-app-cache-v2';
 const STATIC_ASSETS = [
   '/index.html',
@@ -8,52 +7,36 @@ const STATIC_ASSETS = [
   '/icon.png'
 ];
 
-// Install event
+// Install
 self.addEventListener('install', event => {
   console.log('[SW] Installing...');
   event.waitUntil(
-    (async () => {
-      const cache = await caches.open(CACHE_NAME);
-      await Promise.all(
-        STATIC_ASSETS.map(async asset => {
-          try {
-            const res = await fetch(asset);
-            if (!res.ok) throw new Error(`Failed to fetch ${asset}`);
-            await cache.put(asset, res.clone());
-          } catch (err) {
-            console.warn(`[SW] Skipping ${asset}: ${err.message}`);
-          }
-        })
-      );
-    })()
+    caches.open(CACHE_NAME).then(cache =>
+      cache.addAll(STATIC_ASSETS)
+    )
   );
-  self.skipWaiting(); // Activate immediately
+  self.skipWaiting();
 });
 
-// Activate event - cleanup old caches
+// Activate - cleanup old caches
 self.addEventListener('activate', event => {
   console.log('[SW] Activating...');
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// Fetch event - cache-first
+// Fetch - cache-first
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then(resp => resp || fetch(event.request).catch(() => {
-      if (event.request.url.endsWith('/icon.png')) return caches.match('/icon.png');
-      return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-    }))
+    caches.match(event.request).then(resp => resp || fetch(event.request))
   );
 });
 
-// =========================
-// Push event - show notification
-// =========================
+// Push notification
 self.addEventListener('push', event => {
   let payload = {
     title: 'New Message',
@@ -76,7 +59,6 @@ self.addEventListener('push', event => {
     }
   } catch (e) {
     console.warn('⚠️ Malformed push payload', e);
-    // fallback safely to defaults
   }
 
   event.waitUntil(
@@ -85,34 +67,27 @@ self.addEventListener('push', event => {
       icon: payload.icon,
       badge: payload.badge,
       data: { url: payload.url },
-      tag: 'chat-message', // optional: prevents duplicates
-      renotify: true // optional: show new notification even if tag matches
+      tag: 'chat-message',
+      renotify: true
     })
   );
 });
 
-// =========================
-// Notification click - open app
-// =========================
+// Notification click
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const url = event.notification.data?.url || '/';
-
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      // Focus already open window if exists
-      for (const client of clientList) {
-        if (client.url === url && 'focus' in client) {
-          return client.focus();
-        }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsList => {
+      for (const client of clientsList) {
+        if (client.url === url && 'focus' in client) return client.focus();
       }
-      // Otherwise, open new window/tab
-      if (clients.openWindow) return clients.openWindow(url);
+      return clients.openWindow(url);
     })
   );
 });
 
-// Listen for skip waiting messages
+// Skip waiting
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
