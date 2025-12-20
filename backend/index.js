@@ -146,36 +146,42 @@ io.on('connection', socket => {
     const roomDoc = await Room.findOne({ name: room });
     if (!roomDoc) return;
 
-    for (const user of roomDoc.members) {
-      if (user === socket.username) continue;
+    // 🔔 PUSH NOTIFICATIONS (SINGLE LOOP — CORRECT)
+    for (const member of roomDoc.members) {
+      if (member === socket.username) continue;
 
-      // ✅ Send only to valid subscriptions
       const subs = await Subscription.find({
-        username: user,
+        username: member,
         invalid: { $ne: true }
       });
 
-      for (const user of roomDoc.members) {
-        if (user === socket.username) continue; // skip sender
+      for (const sub of subs) {
+        try {
+          console.log('📨 Sending push to:', sub.endpoint);
 
-        const subs = await Subscription.find({ username: user, invalid: false });
-        for (const sub of subs) {
-          try {
-            await webpush.sendNotification(
-              { endpoint: sub.endpoint, keys: sub.keys },
-              JSON.stringify({
-                title: `💬 New message from ${socket.username}`,
-                body: msg,
-                icon: 'https://chat-app-kyp7.onrender.com/icon.png'
-              })
-            );
-          } catch (err) {
-            console.error(`❌ Push failed for ${user}:`, err.statusCode);
-            await Subscription.deleteOne({ _id: sub._id });
-          }
+          await webpush.sendNotification(
+            {
+              endpoint: sub.endpoint,
+              keys: sub.keys
+            },
+            JSON.stringify({
+              title: `💬 New message from ${socket.username}`,
+              body: msg,
+              icon: 'https://chat-app-kyp7.onrender.com/icon.png',
+              url: '/'
+            })
+          );
+        } catch (err) {
+          console.error('❌ Push failed:', err.statusCode);
+
+          // ❗ DO NOT DELETE — MARK INVALID
+          await Subscription.updateOne(
+            { _id: sub._id },
+            { $set: { invalid: true } }
+          );
         }
       }
-          }
+    }
   });
 
   socket.on('deleteMessage', async ({ id, username }) => {
