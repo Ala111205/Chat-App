@@ -1,3 +1,7 @@
+// =========================
+// Service Worker v3
+// =========================
+
 // Versioned cache
 const CACHE_NAME = 'chat-app-cache-v3';
 const STATIC_ASSETS = [
@@ -8,9 +12,11 @@ const STATIC_ASSETS = [
   '/icon.png'
 ];
 
-// Install event
+// -------------------------
+// Install - cache static assets
+// -------------------------
 self.addEventListener('install', event => {
-  console.log('[SW] Installing...');
+  console.log('[SW v3] Installing...');
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
@@ -21,27 +27,31 @@ self.addEventListener('install', event => {
             if (!res.ok) throw new Error(`Failed to fetch ${asset}`);
             await cache.put(asset, res.clone());
           } catch (err) {
-            console.warn(`[SW] Skipping ${asset}: ${err.message}`);
+            console.warn(`[SW v3] Skipping ${asset}: ${err.message}`);
           }
         })
       );
     })()
   );
-  self.skipWaiting(); // Activate immediately
+  self.skipWaiting(); // Activate new SW immediately
 });
 
-// Activate event - cleanup old caches
+// -------------------------
+// Activate - clean old caches
+// -------------------------
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating...');
+  console.log('[SW v3] Activating...');
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
     )
   );
-  self.clients.claim();
+  self.clients.claim(); // Take control immediately
 });
 
-// Fetch event - cache-first
+// -------------------------
+// Fetch - cache-first strategy
+// -------------------------
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request).then(resp => resp || fetch(event.request).catch(() => {
@@ -52,7 +62,7 @@ self.addEventListener('fetch', event => {
 });
 
 // =========================
-// Push event - show notification
+// Push - show notification
 // =========================
 self.addEventListener('push', event => {
   let payload = {
@@ -74,8 +84,9 @@ self.addEventListener('push', event => {
         url: data.url || payload.url
       };
     }
-  } catch (e) {
-    console.warn('⚠️ Malformed push payload', e);
+  } catch (err) {
+    console.warn('[SW v3] Malformed push payload:', err);
+    // fallback safely to defaults
   }
 
   event.waitUntil(
@@ -90,20 +101,26 @@ self.addEventListener('push', event => {
   );
 });
 
+// =========================
+// Notification click - open/focus app
+// =========================
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const url = event.notification.data?.url || '/';
+
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsList => {
-      for (const client of clientsList) {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      for (const client of clientList) {
         if (client.url === url && 'focus' in client) return client.focus();
       }
-      return clients.openWindow(url);
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
 
-// Listen for skip waiting messages
+// =========================
+// Skip waiting for updates
+// =========================
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
