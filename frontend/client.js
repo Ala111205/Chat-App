@@ -27,73 +27,69 @@ let currentRoom = localStorage.getItem('room') || null;
 // ✅ Notification setup
 if (Notification.permission !== "granted") Notification.requestPermission();
 
-if ('serviceWorker' in navigator && 'PushManager' in window) {
-  window.addEventListener('load', async () => {
-    try {
-      const reg = await navigator.serviceWorker.register('/sw.js');
-      console.log('✅ Service Worker registered:', reg);
+async function registerSWAndPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-      // Wait until the SW is ready
-      const swReg = await navigator.serviceWorker.ready;
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    console.log('✅ SW registered:', reg);
 
-      // Force the new SW to take control immediately
-      if (swReg.waiting) {
-        swReg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
+    const swReg = await navigator.serviceWorker.ready;
 
-      // Only subscribe if notifications are granted
-      if (Notification.permission === 'granted') {
-        await subscribeUser();
-      }
+    // Force skip waiting if waiting SW exists
+    if (swReg.waiting) swReg.waiting.postMessage({ type: 'SKIP_WAITING' });
 
-    } catch (err) {
-      console.error('❌ Service Worker registration failed:', err);
+    // Subscribe if notifications are granted
+    if (Notification.permission === 'granted') {
+      await subscribeUser(swReg);
+    } else if (Notification.permission !== 'denied') {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') await subscribeUser(swReg);
     }
-  });
 
-  // Listen for messages from SW (optional, e.g., for update notifications)
-  navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data?.type === 'SKIP_WAITING_COMPLETE') {
-      console.log('SW v2 has taken control');
-    }
-  });
-}
-
-
-async function subscribeUser() {
-  const reg = await navigator.serviceWorker.ready;
-
-  // Check existing subscription
-  let subscription = await reg.pushManager.getSubscription();
-
-  // Only subscribe if missing
-  if (!subscription) {
-    subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(
-        'BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA'
-      )
-    });
-
-    await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, subscription }),
-      credentials: 'include'
-    });
-
-    console.log('✅ New subscription created and sent to server');
-  } else {
-    console.log('ℹ️ Existing subscription is valid, no need to re-subscribe');
+  } catch (err) {
+    console.error('❌ SW registration failed:', err);
   }
 }
 
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+async function subscribeUser(swReg) {
+  try {
+    let subscription = await swReg.pushManager.getSubscription();
+
+    if (!subscription) {
+      subscription = await swReg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array('BEfZW00m0yKwgea53REsjRNgxCzL3wqjJSX7Tbb3VMbgxozgjAad9uormUHaQKPy_NqDpjPbC3NIPh-SPevu0bA')
+      });
+      console.log('✅ New subscription created');
+    } else {
+      console.log('ℹ️ Existing subscription is valid');
+    }
+
+    // Send subscription to backend
+    const resp = await fetch('https://chat-app-kyp7.onrender.com/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: localStorage.getItem('username'), subscription }),
+      credentials: 'include'
+    });
+
+    if (!resp.ok) console.warn('⚠️ Subscription POST failed:', resp.status);
+
+  } catch (err) {
+    console.error('❌ Subscription failed:', err);
+  }
 }
+
+function urlBase64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - base64.length % 4) % 4);
+  const base64Str = (base64 + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64Str);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+// Call on page load
+window.addEventListener('load', registerSWAndPush);
 
 // ✅ Socket.io event listeners
 // Init
