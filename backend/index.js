@@ -16,7 +16,6 @@ const server = http.createServer(app);
 /* =========================
    CORS (ONE SOURCE OF TRUTH)
 ========================= */
-
 const allowedOrigins = [
   'https://chat-app-indol-gamma.vercel.app',
   'http://localhost:3000',
@@ -26,6 +25,7 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin(origin, cb) {
+    // allow same-origin, SSR, curl, uptime monitors
     if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
     return cb(new Error('CORS BLOCKED'), false);
   },
@@ -36,28 +36,51 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 /* =========================
-   HEALTH CHECK
+   BASIC PING (Render / UptimeRobot)
+   - Lightweight
+   - No DB dependency
 ========================= */
-
 app.get('/ping', (req, res) => {
   res.status(200).send('pong');
 });
 
 /* =========================
-   MONGODB
+   MONGODB (MODERN + SAFE)
 ========================= */
+async function connectDB() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 5000, // fail fast
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      autoIndex: true,
+    });
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => {
-    console.error('❌ MongoDB error:', err);
+    console.log('✅ MongoDB connected');
+
+    // Wake-check (helps free-tier resume faster after sleep)
+    setInterval(async () => {
+      try {
+        if (mongoose.connection.readyState === 1) {
+          await mongoose.connection.db.admin().ping();
+          console.log('[PING] MongoDB alive');
+        }
+      } catch (err) {
+        console.warn('[PING] MongoDB ping failed:', err.message);
+      }
+    }, 60_000);
+
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err.message);
     process.exit(1);
-  });
+  }
+}
+
+connectDB();
 
 /* =========================
    WEB PUSH
 ========================= */
-
 webpush.setVapidDetails(
   'mailto:sadham070403@example.com',
   process.env.VAPID_PUBLIC_KEY,
@@ -71,16 +94,22 @@ app.get('/vapidPublicKey', (req, res) => {
 /* =========================
    SUBSCRIBE
 ========================= */
-
 app.post('/subscribe', async (req, res) => {
   const { username, subscription } = req.body;
+
   if (!username || !subscription?.endpoint || !subscription?.keys) {
     return res.status(400).json({ error: 'Invalid subscription' });
   }
 
   await Subscription.findOneAndUpdate(
     { endpoint: subscription.endpoint },
-    { username, endpoint: subscription.endpoint, keys: subscription.keys, invalid: false, updatedAt: new Date() },
+    {
+      username,
+      endpoint: subscription.endpoint,
+      keys: subscription.keys,
+      invalid: false,
+      updatedAt: new Date()
+    },
     { upsert: true }
   );
 
@@ -90,7 +119,6 @@ app.post('/subscribe', async (req, res) => {
 /* =========================
    SOCKET.IO
 ========================= */
-
 const io = new Server(server, {
   cors: corsOptions,
   transports: ['websocket', 'polling'],
@@ -125,7 +153,6 @@ io.on('connection', socket => {
     })));
   });
 
-  // ✅ SINGLE SOURCE OF TRUTH
   socket.on('message', async ({ msg, room, tempId }) => {
     if (!msg || !room || !socket.username) return;
 
@@ -146,7 +173,6 @@ io.on('connection', socket => {
     const roomDoc = await Room.findOne({ name: room });
     if (!roomDoc) return;
 
-    // 🔔 PUSH NOTIFICATIONS (SINGLE LOOP — CORRECT)
     for (const member of roomDoc.members) {
       if (member === socket.username) continue;
 
@@ -157,15 +183,10 @@ io.on('connection', socket => {
 
       for (const sub of subs) {
         try {
-          console.log('📨 Sending push to:', sub.endpoint);
-
           console.log('[PUSH]', member, sub.endpoint.slice(0, 40));
 
           await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: sub.keys
-            },
+            { endpoint: sub.endpoint, keys: sub.keys },
             JSON.stringify({
               title: `💬 New message from ${socket.username}`,
               body: msg,
@@ -174,9 +195,9 @@ io.on('connection', socket => {
             })
           );
         } catch (err) {
-          console.error('❌ Push failed:', err.statusCode);
+          console.error('❌ Push failed:', err.statusCode || err.message);
 
-          // ❗ DO NOT DELETE — MARK INVALID
+          // Mark invalid instead of deleting (safer)
           await Subscription.updateOne(
             { _id: sub._id },
             { $set: { invalid: true } }
@@ -205,14 +226,25 @@ io.on('connection', socket => {
   });
 });
 
+/* =========================
+   HEALTH (Deep check)
+   - Used by dashboards / debugging
+========================= */
 app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+  const dbState = mongoose.connection.readyState;
+  res.status(200).json({
+    status: 'ok',
+    db:
+      dbState === 1 ? 'connected' :
+      dbState === 2 ? 'connecting' :
+      dbState === 0 ? 'disconnected' : 'unknown',
+    time: new Date().toISOString()
+  });
 });
 
 /* =========================
    START
 ========================= */
-
 const PORT = process.env.PORT || 4500;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on ${PORT}`);
