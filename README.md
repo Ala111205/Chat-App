@@ -70,3 +70,75 @@ It enables users to create chat rooms, exchange instant messages, and receive **
       Messages and rooms stored in MongoDB.
       
       WebSockets ensure synchronization across all clients in real time.
+
+**⏱️ Uptime Monitoring**
+
+      Backend uptime maintained using UptimeRobot
+
+      Health endpoint pinged every 5 minutes
+
+      Prevents Render free-tier sleep and cold starts
+
+      Endpoint: /health
+
+**Technical stack:-**
+
+**🖥️ Frontend — Chat App Messenger**
+
+      Built with HTML, CSS, Vanilla JavaScript
+
+      Real-time messaging using Socket.IO client
+
+      Service Worker (v3) for background push notifications
+
+      Push notifications work when:
+
+            Tab is closed
+
+            Browser is minimized
+
+      Dynamic room creation & joining
+
+      Message actions:
+
+            Delete own messages (right-click / long-press)
+
+      Responsive UI:
+
+            Desktop, Tablet, Mobile supported
+
+      Push subscription handled per device (desktop & mobile separately)
+
+      Deployed on Vercel
+
+**⚙️ Backend — Chat App Messenger**
+
+      Built with Node.js, Express.js
+
+      Real-time communication using Socket.IO
+
+      MongoDB Atlas for data persistence
+
+      Robust push notification system using Web Push + VAPID
+
+      Per-user, per-device push subscriptions stored securely
+
+      Handles:
+
+            Rooms
+
+            Messages
+
+            Subscriptions
+
+      Push notifications sent to offline users
+
+      Invalid subscriptions auto-marked to prevent failures
+
+      Health & uptime handled via:
+
+            /health endpoint
+
+            UptimeRobot (5-minute ping)
+
+      Optimized for Render free-tier (prevents sleep & cold starts)
