@@ -81,7 +81,7 @@
 
       Endpoint: /health
 
-**⚙️ Technical Stack:-**
+**🛠️ Technologies Used:-**
 
 **🖥️ Frontend — Chat App Messenger**
 
